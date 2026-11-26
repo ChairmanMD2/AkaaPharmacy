@@ -97,8 +97,10 @@ input, select, textarea, button { font: inherit; }
   .receipt-print { display: block !important; position: absolute; left: 0; top: 0; }
   .no-print { display: none !important; }
 }
+.print-only { display: none; }
 .report-print { }
 @media print {
   .printable, .printable * { visibility: visible !important; }
   .printable { position: absolute; left: 0; top: 0; width: 100%; }
+  .print-only { display: block !important; }
 }

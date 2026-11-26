@@ -17,7 +17,7 @@ export default function Reports() {
     if (profile?.role !== 'admin') return null;
     const { data, error } = await supabase.rpc('profit_report', { p_from: new Date(from + 'T00:00:00').toISOString(), p_to: new Date(to + 'T23:59:59.999').toISOString() });
     if (error) throw error;
-    return data as { revenue: number; cost_of_goods: number; gross_profit: number; lines_without_cost: number; top_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[] };
+    return data as { revenue: number; refunds: number; cost_of_goods: number; gross_profit: number; lines_without_cost: number; top_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[] };
   }, [from, to, profile?.role]);
 
   const r = useAsync(async () => {
@@ -27,6 +27,8 @@ export default function Reports() {
     const items = await fetchAll<any>((a, b) => supabase.from('sale_items').select('quantity,line_total,drug_id,drugs(name),sales!inner(sold_at,status)').eq('sales.status', 'completed').gte('sales.sold_at', start).lte('sales.sold_at', end).range(a, b));
     const pays = await fetchAll<any>((a, b) => supabase.from('payments').select('method,amount,status,sales!inner(sold_at,status)').eq('sales.status', 'completed').gte('sales.sold_at', start).lte('sales.sold_at', end).range(a, b));
     const exp = await supabase.rpc('expense_report', { p_from: from, p_to: to, p_branch: null });
+    const ref = await supabase.from('sale_returns').select('refund_amount').gte('created_at', start).lte('created_at', end);
+    const refunds = ((ref.data ?? []) as any[]).reduce((s, x) => s + Number(x.refund_amount), 0);
 
     const byDay = new Map<string, { n: number; total: number }>();
     sales.forEach((s) => { const d = s.sold_at.slice(0, 10); const x = byDay.get(d) ?? { n: 0, total: 0 }; x.n++; x.total += Number(s.total); byDay.set(d, x); });
@@ -36,7 +38,7 @@ export default function Reports() {
     pays.filter((p) => p.status !== 'rejected').forEach((p) => method.set(p.method, (method.get(p.method) ?? 0) + Number(p.amount)));
     const expenses = ((exp.data ?? []) as any[]).reduce((s, e) => s + Number(e.total_cost), 0);
     const revenue = sales.reduce((s, x) => s + Number(x.total), 0);
-    return { count: sales.length, revenue, discounts: sales.reduce((s, x) => s + Number(x.discount), 0), expenses,
+    return { count: sales.length, revenue, refunds, discounts: sales.reduce((s, x) => s + Number(x.discount), 0), expenses,
       byDay: [...byDay.entries()].sort(), top: [...prod.values()].sort((a, b) => b.value - a.value).slice(0, 20), method: [...method.entries()].sort((a, b) => b[1] - a[1]) };
   }, [from, to]);
 
@@ -52,19 +54,21 @@ export default function Reports() {
       </Card>
       {r.loading && !d ? <Spinner label="Crunching numbers…" /> : r.error ? <ErrorBox message={r.error} onRetry={r.reload} /> : d && (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Stat label="Sales revenue" value={money(d.revenue)} hint={`${num(d.count)} sales`} />
+            <Stat label="Refunds" value={money(d.refunds)} tone={d.refunds > 0 ? 'warn' : undefined} hint={`Net of refunds: ${money(d.revenue - d.refunds)}`} />
             <Stat label="Average sale" value={money(d.count ? d.revenue / d.count : 0)} />
             <Stat label="Discounts given" value={money(d.discounts)} />
-            <Stat label="Expenses" value={money(d.expenses)} hint={`Sales minus expenses: ${money(d.revenue - d.expenses)}`} />
+            <Stat label="Expenses" value={money(d.expenses)} hint={`Net sales minus expenses: ${money(d.revenue - d.refunds - d.expenses)}`} />
           </div>
           {profit.data ? (
             <Card className="mt-4">
               <div className="border-b border-line px-4 py-3"><h2 className="font-semibold">Profit (administrator only)</h2><p className="text-xs text-muted">Product revenue minus the purchase cost recorded for the batches that were sold. Delivery fees are excluded.</p></div>
-              <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-5">
                 <Stat label="Product revenue" value={money(profit.data.revenue)} />
-                <Stat label="Cost of goods sold" value={money(profit.data.cost_of_goods)} />
-                <Stat label="Gross profit" value={money(profit.data.gross_profit)} tone={profit.data.gross_profit < 0 ? 'bad' : 'ok'} hint={profit.data.revenue ? `${((profit.data.gross_profit / profit.data.revenue) * 100).toFixed(1)}% margin` : undefined} />
+                <Stat label="Refunds" value={money(profit.data.refunds)} tone={profit.data.refunds > 0 ? 'warn' : undefined} />
+                <Stat label="Cost of goods sold" value={money(profit.data.cost_of_goods)} hint="net of goods restocked" />
+                <Stat label="Gross profit" value={money(profit.data.gross_profit)} tone={profit.data.gross_profit < 0 ? 'bad' : 'ok'} hint={profit.data.revenue - profit.data.refunds > 0 ? `${((profit.data.gross_profit / (profit.data.revenue - profit.data.refunds)) * 100).toFixed(1)}% margin` : undefined} />
                 <Stat label="After expenses" value={money(profit.data.gross_profit - d.expenses)} tone={profit.data.gross_profit - d.expenses < 0 ? 'bad' : undefined} />
               </div>
               {profit.data.lines_without_cost > 0 && <p className="mx-4 mb-3 rounded-lg bg-warnsoft p-2.5 text-xs text-warn">{profit.data.lines_without_cost} sold line(s) have no purchase cost recorded, so profit is overstated for them. Add the cost price in Inventory.</p>}

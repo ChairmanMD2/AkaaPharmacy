@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   BarChart3, CloudOff, Cloud, Command, LayoutDashboard, ListPlus, LogOut, Menu, Moon, Package, Receipt, RefreshCw,
-  Settings as Cog, ShoppingCart, Sun, Truck, Users, Wallet, ClipboardList, X, AlertTriangle, KeyRound,
+  Settings as Cog, ShoppingCart, Sun, Truck, Users, Wallet, ClipboardList, X, AlertTriangle, KeyRound, Coins,
 } from 'lucide-react';
 import { PasswordForm } from './PasswordForm';
 import { useAuth } from '../lib/auth';
@@ -25,6 +25,7 @@ const NAV: NavDef[] = [
   { to: '/orders', label: 'Orders', icon: ClipboardList, feature: 'orders' },
   { to: '/deliveries', label: 'Deliveries', icon: Truck, feature: 'deliveries' },
   { to: '/wishlist', label: 'Wish List', icon: ListPlus, feature: 'wishlist' },
+  { to: '/shifts', label: 'Cash-up', icon: Coins, feature: 'shifts' },
   { to: '/expenses', label: 'Expenses', icon: Wallet, feature: 'expenses' },
   { to: '/reports', label: 'Reports', icon: BarChart3, feature: 'reports' },
   { to: '/users', label: 'Users', icon: Users, feature: 'users' },
