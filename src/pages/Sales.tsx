@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Ban, Check, Printer, X } from 'lucide-react';
+import { AlertTriangle, Ban, Check, Printer, Undo2, X } from 'lucide-react';
 import { ReceiptModal } from '../components/Receipt';
 import { supabase, errMsg } from '../lib/supabase';
 import { useAsync } from '../lib/hooks';
@@ -7,7 +7,7 @@ import { useAuth } from '../lib/auth';
 import { can } from '../lib/permissions';
 import { fmtDateTime, money } from '../lib/format';
 import { PAY_LABEL, type PayMethod } from '../lib/types';
-import { Badge, Button, Card, Drawer, Empty, ErrorBox, Modal, PageHeader, SearchInput, Spinner, Table, Tabs, Td, Textarea } from '../components/ui';
+import { Badge, Button, Card, Drawer, Empty, ErrorBox, Field, Input, Modal, PageHeader, SearchInput, Select, Spinner, Table, Tabs, Td, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
 
 type Tab = 'all' | 'review' | 'payments';
@@ -104,10 +104,11 @@ function SaleDrawer({ sale, onClose, onChanged }: { sale: any; onClose: () => vo
   const toast = useToast();
   const [voiding, setVoiding] = useState(false);
   const [reprint, setReprint] = useState(false);
+  const [returning, setReturning] = useState(false);
   const [reason, setReason] = useState('');
   const detail = useAsync(async () => {
     const { data, error } = await supabase.from('sales')
-      .select('id, sale_items(id,quantity,unit_price,line_total,batch_id,drug_id,drugs(name)), payments(id,method,amount,status,reference,note)').eq('id', sale.id).single();
+      .select('id, sale_items(id,quantity,unit_price,line_total,batch_id,drug_id,drugs(name)), payments(id,method,amount,status,reference,note), sale_returns(id,return_no,reason,refund_method,refund_amount,created_at,sale_return_items(sale_item_id,quantity,restocked))').eq('id', sale.id).single();
     if (error) throw error;
     return data as any;
   }, [sale.id]);
@@ -120,6 +121,7 @@ function SaleDrawer({ sale, onClose, onChanged }: { sale: any; onClose: () => vo
     <Drawer title={`Receipt ${sale.receipt_no}`} onClose={onClose}
       footer={<>
         {detail.data && <Button onClick={() => setReprint(true)}><Printer size={16} />Reprint receipt</Button>}
+        {sale.status === 'completed' && can(profile?.role, 'void') && detail.data && <Button onClick={() => setReturning(true)}><Undo2 size={16} />Return items</Button>}
         {sale.status === 'completed' && can(profile?.role, 'void') && <Button variant="danger" onClick={() => setVoiding(true)}><Ban size={16} />Void sale</Button>}
       </>}>
       <dl className="mb-4 grid grid-cols-2 gap-3 text-sm">
@@ -145,6 +147,19 @@ function SaleDrawer({ sale, onClose, onChanged }: { sale: any; onClose: () => vo
                 <span className="flex items-center gap-2"><Badge tone={p.status === 'verified' ? 'ok' : p.status === 'rejected' ? 'bad' : 'warn'}>{p.status === 'pending_verification' ? 'to verify' : p.status}</Badge><span className="tnum">{money(p.amount)}</span></span></li>
             ))}
           </ul>
+          {detail.data.sale_returns?.length > 0 && (
+            <>
+              <h3 className="mb-1 mt-4 text-sm font-semibold">Returns &amp; refunds</h3>
+              <ul className="divide-y divide-line rounded-lg border border-line">
+                {detail.data.sale_returns.map((r: any) => (
+                  <li key={r.id} className="px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between"><span className="font-medium">{r.return_no} <span className="font-normal text-muted">· {fmtDateTime(r.created_at)}</span></span><span className="tnum font-semibold">-{money(r.refund_amount)}</span></div>
+                    <p className="text-xs text-muted">{r.sale_return_items.reduce((s: number, x: any) => s + x.quantity, 0)} item(s) · refunded by {r.refund_method.replace('_', ' ')} · {r.reason}{r.sale_return_items.some((x: any) => !x.restocked) ? ' · some items not restocked' : ''}</p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </>
       )}
       {reprint && detail.data && (
@@ -156,6 +171,7 @@ function SaleDrawer({ sale, onClose, onChanged }: { sale: any; onClose: () => vo
           alloc: [], status: 'synced', attempts: 0,
         }} />
       )}
+      {returning && detail.data && <ReturnModal sale={sale} items={detail.data.sale_items} returns={detail.data.sale_returns ?? []} onClose={() => setReturning(false)} onDone={() => { setReturning(false); detail.reload(); onChanged(); }} />}
       {voiding && (
         <Modal title="Void this sale?" onClose={() => setVoiding(false)} footer={<><Button onClick={() => setVoiding(false)}>Cancel</Button><Button variant="danger" disabled={!reason.trim()} onClick={doVoid}>Void and restore stock</Button></>}>
           <p className="mb-2 text-sm text-muted">Stock goes back to the batches it came from. This cannot be undone, and your name is recorded.</p>
@@ -163,5 +179,55 @@ function SaleDrawer({ sale, onClose, onChanged }: { sale: any; onClose: () => vo
         </Modal>
       )}
     </Drawer>
+  );
+}
+
+function ReturnModal({ sale, items, returns, onClose, onDone }: { sale: any; items: any[]; returns: any[]; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const returned = new Map<string, number>();
+  returns.forEach((r) => r.sale_return_items.forEach((x: any) => returned.set(x.sale_item_id, (returned.get(x.sale_item_id) ?? 0) + x.quantity)));
+  const rows = items.map((i) => ({ ...i, left: i.quantity - (returned.get(i.id) ?? 0) }));
+  const [qty, setQty] = useState<Record<string, string>>({});
+  const [reason, setReason] = useState('');
+  const [method, setMethod] = useState('cash');
+  const [ref, setRef] = useState('');
+  const [restock, setRestock] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const ratio = Number(sale.subtotal) > 0 ? Number(sale.total) / Number(sale.subtotal) : 1; // refund what was really paid after any discount
+  const chosen = rows.map((r) => ({ id: r.id, q: Math.min(Math.max(parseInt(qty[r.id] || '0', 10) || 0, 0), r.left), price: Number(r.unit_price) })).filter((x) => x.q > 0);
+  const refund = Math.round(chosen.reduce((s, x) => s + x.price * x.q * ratio, 0) * 100) / 100;
+
+  const submit = async () => {
+    if (!chosen.length) return toast('Enter how many of each item are coming back.', 'error');
+    if (!reason.trim()) return toast('A reason is required.', 'error');
+    setBusy(true);
+    const { data, error } = await supabase.rpc('process_return', { p_sale: sale.id, p_items: chosen.map((x) => ({ sale_item_id: x.id, quantity: x.q })), p_reason: reason, p_method: method, p_reference: ref || null, p_restock: restock });
+    setBusy(false);
+    if (error) return toast(errMsg(error), 'error');
+    toast(`Return ${data.return_no} recorded. Refund ${money(data.refund_amount)}.`);
+    onDone();
+  };
+
+  return (
+    <Modal title="Return items" onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} disabled={!chosen.length} onClick={submit}>Refund {money(refund)}</Button></>}>
+      <p className="mb-3 text-sm text-muted">Choose what the customer is bringing back. The refund is worked out from what was actually paid{ratio < 1 ? ' (this sale had a discount, so each item refunds proportionally less)' : ''}.</p>
+      <ul className="mb-4 divide-y divide-line rounded-lg border border-line">
+        {rows.map((r) => (
+          <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+            <span className="min-w-0 flex-1"><span className="font-medium">{r.drugs?.name}</span><span className="block text-xs text-muted">{r.quantity} sold at {money(r.unit_price)}{r.quantity !== r.left ? ` · ${r.left} left to return` : ''}</span></span>
+            {r.left > 0
+              ? <Input aria-label={`Return quantity for ${r.drugs?.name}`} className="w-20 text-center" inputMode="numeric" placeholder="0" value={qty[r.id] ?? ''} onChange={(e) => setQty({ ...qty, [r.id]: e.target.value.replace(/\D/g, '') })} />
+              : <Badge>all returned</Badge>}
+          </li>
+        ))}
+      </ul>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Refund by"><Select value={method} onChange={(e) => setMethod(e.target.value)}><option value="cash">Cash</option><option value="transfer">Bank transfer</option><option value="pos_terminal">POS terminal reversal</option><option value="store_credit">Store credit</option><option value="other">Other</option></Select></Field>
+        <Field label="Reference (transfer ID / approval code)"><Input value={ref} onChange={(e) => setRef(e.target.value)} /></Field>
+        <Field label="Reason *" className="sm:col-span-2"><Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Wrong item, damaged pack, customer changed mind…" /></Field>
+        <label className="flex items-start gap-2 text-sm sm:col-span-2"><input type="checkbox" className="mt-0.5" checked={restock} onChange={(e) => setRestock(e.target.checked)} /><span>Put the goods back on the shelf<span className="block text-xs text-muted">Untick if they are damaged or unfit for resale. Expired goods are never restocked.</span></span></label>
+      </div>
+    </Modal>
   );
 }

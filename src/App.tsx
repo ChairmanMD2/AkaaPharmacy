@@ -15,6 +15,7 @@ const Sales = lazy(() => import('./pages/Sales'));
 const Orders = lazy(() => import('./pages/Orders'));
 const Deliveries = lazy(() => import('./pages/Deliveries'));
 const Wishlist = lazy(() => import('./pages/Wishlist'));
+const Shifts = lazy(() => import('./pages/Shifts'));
 const Expenses = lazy(() => import('./pages/Expenses'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Users = lazy(() => import('./pages/Users'));
@@ -57,6 +58,7 @@ function Gate() {
           <Route path="orders" element={<Guard feature="orders"><Orders /></Guard>} />
           <Route path="deliveries" element={<Guard feature="deliveries"><Deliveries /></Guard>} />
           <Route path="wishlist" element={<Guard feature="wishlist"><Wishlist /></Guard>} />
+          <Route path="shifts" element={<Guard feature="shifts"><Shifts /></Guard>} />
           <Route path="expenses" element={<Guard feature="expenses"><Expenses /></Guard>} />
           <Route path="reports" element={<Guard feature="reports"><Reports /></Guard>} />
           <Route path="users" element={<Guard feature="users"><Users /></Guard>} />

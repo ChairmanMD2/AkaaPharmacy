@@ -10,7 +10,8 @@ Offline-first pharmacy POS, inventory, orders and delivery-handoff system (insta
 |---|---|---|
 | Point of Sale | **Yes** | Barcode/keyboard-first. Sales save locally, deduct local stock (earliest-expiry-first) and upload automatically. 80 mm receipt. |
 | Inventory | View offline; edits online | Batches/expiry, receive stock, adjustments, CSV/Excel bulk import with validation. |
-| Sales | Online | Receipts, payment verification (transfer / POS-terminal references), voids, exception review. |
+| Sales | Online | Receipts and reprints, payment verification (transfer / POS-terminal references), voids, **customer returns and refunds** (partial, discount-aware, expired goods never restocked), exception review. |
+| Cash-up | Online | Per-cashier shifts: opening float, expected cash (sales − change − cash refunds), counted cash, difference with a required explanation, history and printable report. |
 | Orders | Online | placed → payment → pharmacist (Rx) → stock reserved → packed → dispatched → delivered, plus cancel / failed / return. |
 | Deliveries | Online | Riders and courier companies see **only their own jobs**; delivery confirmed with the customer's one-time code. |
 | Wish List | Online | Unmet-demand register with role-based edit rights and demand insights. |
@@ -56,7 +57,7 @@ VITE_SUPABASE_ANON_KEY
 
 ## Known gaps / roadmap
 
-Customer storefront · Paystack · courier mobile app (the restricted rider/courier role and API surface already exist) · supplier & purchase-order screens · profit report from purchase costs · client receipt template · logo/icons (placeholders in `public/`).
+Customer storefront · Paystack · courier mobile app (the restricted rider/courier role and API surface already exist) ·  supplier & purchase-order screens · customers screen · stock-take screen · client receipt template · logo/icons (placeholders in `public/`).
 
 ## Stock import format (CSV or .xlsx)
 

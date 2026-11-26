@@ -2,7 +2,7 @@ import type { Role } from './types';
 
 export type Feature =
   | 'dashboard' | 'pos' | 'inventory' | 'inventory_write' | 'sales' | 'orders' | 'deliveries'
-  | 'wishlist' | 'expenses' | 'expenses_review' | 'reports' | 'users' | 'settings' | 'void' | 'verify_payment';
+  | 'wishlist' | 'shifts' | 'expenses' | 'expenses_review' | 'reports' | 'users' | 'settings' | 'void' | 'verify_payment';
 
 const MAP: Record<Feature, Role[]> = {
   dashboard: ['admin', 'pharmacist', 'cashier', 'inventory_officer'],
@@ -13,6 +13,7 @@ const MAP: Record<Feature, Role[]> = {
   orders: ['admin', 'pharmacist', 'cashier', 'inventory_officer'],
   deliveries: ['admin', 'pharmacist', 'inventory_officer', 'rider', 'courier'],
   wishlist: ['admin', 'pharmacist', 'cashier', 'inventory_officer'],
+  shifts: ['admin', 'pharmacist', 'cashier'],
   expenses: ['admin', 'pharmacist', 'cashier', 'inventory_officer'],
   expenses_review: ['admin', 'pharmacist'],
   reports: ['admin', 'pharmacist'],
