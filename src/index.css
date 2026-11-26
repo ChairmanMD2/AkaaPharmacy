@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Semantic design tokens: every colour in the app comes from here, so light/dark are consistent. */
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #f8fafb;
+  --line: #e3e8ee;
+  --fg: #0f1720;
+  --muted: #5b6776;
+  --brand: #0f766e;
+  --brand-fg: #ffffff;
+  --brand-soft: #e3f4f1;
+  --ok: #15803d;
+  --ok-soft: #e3f6ea;
+  --warn: #b45309;
+  --warn-soft: #fdf1dc;
+  --bad: #b91c1c;
+  --bad-soft: #fde8e8;
+  --info: #1d4ed8;
+  --info-soft: #e5edfd;
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 4px 14px rgb(16 24 40 / 0.05);
+}
+.dark {
+  --bg: #0c1116;
+  --surface: #141b22;
+  --surface-2: #18212a;
+  --line: #26313c;
+  --fg: #e8edf2;
+  --muted: #93a1b1;
+  --brand: #2dd4bf;
+  --brand-fg: #04201c;
+  --brand-soft: #10302d;
+  --ok: #4ade80;
+  --ok-soft: #12301f;
+  --warn: #fbbf24;
+  --warn-soft: #3a2a0b;
+  --bad: #f87171;
+  --bad-soft: #3b1616;
+  --info: #7aa2ff;
+  --info-soft: #14233f;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.3);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface-2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brandfg: var(--brand-fg);
+  --color-brandsoft: var(--brand-soft);
+  --color-ok: var(--ok);
+  --color-oksoft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warnsoft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-badsoft: var(--bad-soft);
+  --color-info: var(--info);
+  --color-infosoft: var(--info-soft);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --shadow-card: var(--shadow);
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+}
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+input, select, textarea, button { font: inherit; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slidein { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes slideup { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+.anim-fade { animation: fadein .15s ease-out; }
+.anim-slide { animation: slidein .2s ease-out; }
+.anim-up { animation: slideup .18s ease-out; }
+@media (prefers-reduced-motion: reduce) { .anim-fade, .anim-slide, .anim-up { animation: none; } }
+
+/* 80mm thermal receipt: only the receipt is printed */
+.receipt-print { display: none; }
+.receipt { width: 80mm; font-family: ui-monospace, "Courier New", monospace; font-size: 12px; color: #000; background: #fff; padding: 4mm; }
+@media print {
+  @page { size: 80mm auto; margin: 0; }
+  body * { visibility: hidden !important; }
+  .receipt-print, .receipt-print * { visibility: visible !important; }
+  .receipt-print { display: block !important; position: absolute; left: 0; top: 0; }
+  .no-print { display: none !important; }
+}
+.report-print { }
+@media print {
+  .printable, .printable * { visibility: visible !important; }
+  .printable { position: absolute; left: 0; top: 0; width: 100%; }
+}
