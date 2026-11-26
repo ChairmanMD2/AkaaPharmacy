@@ -45,11 +45,11 @@ const Line = ({ a, b, bold }: { a: string; b: string; bold?: boolean }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: bold ? 700 : 400 }}><span>{a}</span><span>{b}</span></div>
 );
 
-export function ReceiptModal({ sale, onClose }: { sale: PendingSale; onClose: () => void }) {
+export function ReceiptModal({ sale, onClose, title = 'Sale complete' }: { sale: PendingSale; onClose: () => void; title?: string }) {
   const settings = useLiveQuery(async () => (await db.meta.get('settings'))?.value ?? {}, [], {} as Record<string, any>);
   return (
     <>
-      <Modal title="Sale complete" onClose={onClose} footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" onClick={() => window.print()}><Printer size={16} />Print receipt</Button></>}>
+      <Modal title={title} onClose={onClose} footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" onClick={() => window.print()}><Printer size={16} />Print receipt</Button></>}>
         <div className="mx-auto w-fit rounded-lg border border-line bg-white shadow-card"><ReceiptBody sale={sale} settings={settings} /></div>
       </Modal>
       {createPortal(<div className="receipt-print"><ReceiptBody sale={sale} settings={settings} /></div>, document.body)}

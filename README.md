@@ -67,3 +67,8 @@ One row per **batch**. Header row required. Columns (only `name` is mandatory; `
 * `expiry_date` as `YYYY-MM-DD`; `quantity` is the physical count for that batch (re-importing the same file never double-counts).
 * `requires_prescription`: yes/no. Existing products are matched by barcode, then name, and updated.
 * Format the barcode column as **Text** in Excel to keep leading zeros. Download the template from Inventory → Bulk import.
+
+## Testing
+
+* `npm test` runs the unit tests (stock allocation, import validation, password rules, permissions, sync guard).
+* `samples/demo-inventory.csv` is **demo data only** (illustrative prices and quantities, not market prices). Import it from Inventory → Bulk import to try the system; it includes an expired batch, items expiring soon, low-stock and out-of-stock items, and prescription items so every alert can be seen. Remove or overwrite it before real use.

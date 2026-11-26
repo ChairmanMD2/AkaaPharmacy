@@ -6,7 +6,11 @@ export const money = (n: number | string | null | undefined) =>
 
 export const num = (n: number | string | null | undefined) => Number(n ?? 0).toLocaleString('en-NG');
 
-export const todayISO = () => new Date().toISOString().slice(0, 10);
+/** Today's date on THIS device (local time), as YYYY-MM-DD. Using UTC would be a day behind for the first hour after midnight in Nigeria. */
+export const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 export function fmtDate(v?: string | null) {
   if (!v) return '—';

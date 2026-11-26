@@ -5,10 +5,20 @@ import { useAsync } from '../lib/hooks';
 import { downloadCSV, fmtDate, money, num, todayISO } from '../lib/format';
 import { PAY_LABEL, type PayMethod } from '../lib/types';
 import { Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Spinner, Stat, Table, Td } from '../components/ui';
+import { useAuth } from '../lib/auth';
 
 export default function Reports() {
+  const { profile } = useAuth();
   const [from, setFrom] = useState(todayISO().slice(0, 8) + '01');
   const [to, setTo] = useState(todayISO());
+
+  // Profit uses hidden purchase costs, so only the administrator's server function returns it.
+  const profit = useAsync(async () => {
+    if (profile?.role !== 'admin') return null;
+    const { data, error } = await supabase.rpc('profit_report', { p_from: new Date(from + 'T00:00:00').toISOString(), p_to: new Date(to + 'T23:59:59.999').toISOString() });
+    if (error) throw error;
+    return data as { revenue: number; cost_of_goods: number; gross_profit: number; lines_without_cost: number; top_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[] };
+  }, [from, to, profile?.role]);
 
   const r = useAsync(async () => {
     const start = new Date(from + 'T00:00:00').toISOString();
@@ -48,7 +58,21 @@ export default function Reports() {
             <Stat label="Discounts given" value={money(d.discounts)} />
             <Stat label="Expenses" value={money(d.expenses)} hint={`Sales minus expenses: ${money(d.revenue - d.expenses)}`} />
           </div>
-          <p className="mt-2 text-xs text-muted">Sales minus expenses is before the cost of goods sold. A profit report using purchase costs is planned for administrators.</p>
+          {profit.data ? (
+            <Card className="mt-4">
+              <div className="border-b border-line px-4 py-3"><h2 className="font-semibold">Profit (administrator only)</h2><p className="text-xs text-muted">Product revenue minus the purchase cost recorded for the batches that were sold. Delivery fees are excluded.</p></div>
+              <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+                <Stat label="Product revenue" value={money(profit.data.revenue)} />
+                <Stat label="Cost of goods sold" value={money(profit.data.cost_of_goods)} />
+                <Stat label="Gross profit" value={money(profit.data.gross_profit)} tone={profit.data.gross_profit < 0 ? 'bad' : 'ok'} hint={profit.data.revenue ? `${((profit.data.gross_profit / profit.data.revenue) * 100).toFixed(1)}% margin` : undefined} />
+                <Stat label="After expenses" value={money(profit.data.gross_profit - d.expenses)} tone={profit.data.gross_profit - d.expenses < 0 ? 'bad' : undefined} />
+              </div>
+              {profit.data.lines_without_cost > 0 && <p className="mx-4 mb-3 rounded-lg bg-warnsoft p-2.5 text-xs text-warn">{profit.data.lines_without_cost} sold line(s) have no purchase cost recorded, so profit is overstated for them. Add the cost price in Inventory.</p>}
+              {profit.data.top_products.length > 0 && <Table head={['Most profitable products', 'Qty', 'Revenue', 'Cost', 'Profit']}>{profit.data.top_products.map((t) => <tr key={t.name}><Td className="font-medium">{t.name}</Td><Td className="tnum">{num(t.qty)}</Td><Td className="tnum">{money(t.revenue)}</Td><Td className="tnum">{money(t.cost)}</Td><Td className="tnum font-semibold">{money(t.profit)}</Td></tr>)}</Table>}
+            </Card>
+          ) : profit.error ? <p className="mt-2 text-xs text-bad">Profit could not be loaded: {profit.error}</p> : (
+            <p className="mt-2 text-xs text-muted">Sales minus expenses is before the cost of goods sold. The profit breakdown is shown to administrators only.</p>
+          )}
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <Card><div className="border-b border-line px-4 py-3"><h2 className="font-semibold">By day</h2></div>
               {!d.byDay.length ? <Empty title="No sales in this period" /> : <Table head={['Date', 'Sales', 'Total']}>{d.byDay.map(([k, v]) => <tr key={k}><Td>{fmtDate(k)}</Td><Td className="tnum">{v.n}</Td><Td className="tnum font-medium">{money(v.total)}</Td></tr>)}</Table>}</Card>
