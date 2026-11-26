@@ -13,6 +13,7 @@ import type { Batch, Drug } from '../lib/types';
 import { Badge, Button, Card, Drawer, Empty, Field, Input, Modal, PageHeader, SearchInput, Select, Spinner, Table, Td, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
 import { useOnline } from '../lib/hooks';
+import { COLS, SAMPLE, normaliseCell, validateRow, type ImpRow } from '../lib/importRows';
 
 type Filter = 'all' | 'low' | 'out' | 'expiring' | 'expired';
 
@@ -263,27 +264,6 @@ function BatchesDrawer({ drug, write, onClose, onChanged }: { drug: Drug; write:
 }
 
 // ───────────── bulk import ─────────────
-const COLS = ['name', 'generic_name', 'category', 'nafdac_number', 'barcode', 'unit_type', 'cost_price', 'selling_price', 'batch_number', 'expiry_date', 'quantity'];
-const SAMPLE = ['Amoxicillin 500mg Capsules', 'Amoxicillin', 'Antibiotics', 'A4-1234', '6151100012345', 'Pack', '1200', '1800', 'BTX-2026A', '2027-08-31', '45'];
-
-interface ImpRow { n: number; data: Record<string, string>; errors: string[] }
-
-function normaliseCell(v: unknown): string {
-  if (v == null) return '';
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  return String(v).trim();
-}
-
-function validateRow(n: number, data: Record<string, string>): ImpRow {
-  const errors: string[] = [];
-  if (!data.name) errors.push('name is required');
-  ['cost_price', 'selling_price'].forEach((k) => { if (data[k] && !(Number(data[k]) >= 0)) errors.push(`${k} must be a number`); });
-  if (data.batch_number) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(data.expiry_date || '') || Number.isNaN(Date.parse(data.expiry_date))) errors.push('expiry_date must be YYYY-MM-DD');
-    if (!/^\d+$/.test(data.quantity || '')) errors.push('quantity must be a whole number');
-  } else if (data.quantity || data.expiry_date) errors.push('batch_number is required with quantity / expiry');
-  return { n, data, errors };
-}
 
 function ImportModal({ branch, onClose, onDone }: { branch: string | null; onClose: () => void; onDone: () => void }) {
   const toast = useToast();

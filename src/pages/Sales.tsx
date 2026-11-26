@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { AlertTriangle, Ban, Check, X } from 'lucide-react';
+import { AlertTriangle, Ban, Check, Printer, X } from 'lucide-react';
+import { ReceiptModal } from '../components/Receipt';
 import { supabase, errMsg } from '../lib/supabase';
 import { useAsync } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
@@ -102,10 +103,11 @@ function SaleDrawer({ sale, onClose, onChanged }: { sale: any; onClose: () => vo
   const { profile } = useAuth();
   const toast = useToast();
   const [voiding, setVoiding] = useState(false);
+  const [reprint, setReprint] = useState(false);
   const [reason, setReason] = useState('');
   const detail = useAsync(async () => {
     const { data, error } = await supabase.from('sales')
-      .select('id, sale_items(id,quantity,unit_price,line_total,batch_id,drugs(name)), payments(id,method,amount,status,reference,note)').eq('id', sale.id).single();
+      .select('id, sale_items(id,quantity,unit_price,line_total,batch_id,drug_id,drugs(name)), payments(id,method,amount,status,reference,note)').eq('id', sale.id).single();
     if (error) throw error;
     return data as any;
   }, [sale.id]);
@@ -116,7 +118,10 @@ function SaleDrawer({ sale, onClose, onChanged }: { sale: any; onClose: () => vo
   };
   return (
     <Drawer title={`Receipt ${sale.receipt_no}`} onClose={onClose}
-      footer={sale.status === 'completed' && can(profile?.role, 'void') ? <Button variant="danger" onClick={() => setVoiding(true)}><Ban size={16} />Void sale</Button> : undefined}>
+      footer={<>
+        {detail.data && <Button onClick={() => setReprint(true)}><Printer size={16} />Reprint receipt</Button>}
+        {sale.status === 'completed' && can(profile?.role, 'void') && <Button variant="danger" onClick={() => setVoiding(true)}><Ban size={16} />Void sale</Button>}
+      </>}>
       <dl className="mb-4 grid grid-cols-2 gap-3 text-sm">
         <div><dt className="text-xs text-muted">Time</dt><dd>{fmtDateTime(sale.sold_at)}</dd></div>
         <div><dt className="text-xs text-muted">Cashier</dt><dd>{sale.cashier}</dd></div>
@@ -141,6 +146,15 @@ function SaleDrawer({ sale, onClose, onChanged }: { sale: any; onClose: () => vo
             ))}
           </ul>
         </>
+      )}
+      {reprint && detail.data && (
+        <ReceiptModal title={`Receipt ${sale.receipt_no}${sale.status === 'voided' ? ' (VOIDED)' : ''}`} onClose={() => setReprint(false)} sale={{
+          id: sale.id, local_ref: sale.local_ref ?? '', receipt_no: sale.receipt_no, branch_id: sale.branch_id, sold_at: sale.sold_at, created_at: sale.sold_at,
+          cashier_name: sale.cashier, items: detail.data.sale_items.map((i: any) => ({ drug_id: i.drug_id ?? '', name: i.drugs?.name ?? 'Item', quantity: i.quantity, unit_price: Number(i.unit_price) })),
+          discount: Number(sale.discount), subtotal: Number(sale.subtotal), total: Number(sale.total),
+          payments: detail.data.payments.filter((p: any) => p.status !== 'rejected').map((p: any) => ({ method: p.method, amount: Number(p.amount), reference: p.reference ?? undefined })),
+          alloc: [], status: 'synced', attempts: 0,
+        }} />
       )}
       {voiding && (
         <Modal title="Void this sale?" onClose={() => setVoiding(false)} footer={<><Button onClick={() => setVoiding(false)}>Cancel</Button><Button variant="danger" disabled={!reason.trim()} onClick={doVoid}>Void and restore stock</Button></>}>

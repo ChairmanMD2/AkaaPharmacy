@@ -1,0 +1,31 @@
+name,generic_name,category,nafdac_number,barcode,unit_type,cost_price,selling_price,wholesale_price,reorder_level,requires_prescription,batch_number,expiry_date,quantity
+Paracetamol 500mg Tablets,Paracetamol,Pain & Fever,,DEMO-0001,Pack,150,250,200,30,no,DM-PAR-01,2028-05-19,120
+Paracetamol 500mg Tablets,Paracetamol,Pain & Fever,,DEMO-0001,Pack,150,250,200,30,no,DM-PAR-02,2027-02-14,25
+Ibuprofen 400mg Tablets,Ibuprofen,Pain & Fever,,DEMO-0002,Pack,300,500,400,20,no,DM-IBU-01,2028-01-20,60
+Diclofenac 50mg Tablets,Diclofenac,Pain & Fever,,,Pack,350,600,480,15,no,DM-DIC-01,2027-12-11,40
+Vitamin C 1000mg Effervescent,Ascorbic acid,Vitamins,,,Tube,900,1400,1200,10,no,DM-VTC-01,2027-09-22,30
+Multivitamin Tablets,Multivitamin,Vitamins,,,Bottle,1200,1900,1600,10,no,DM-MUL-01,2028-04-09,24
+Zinc Sulphate 20mg Tablets,Zinc,Vitamins,,,Pack,400,700,550,15,no,DM-ZNC-01,2027-10-22,45
+Oral Rehydration Salts,ORS,First Aid,,DEMO-0003,Sachet,120,200,150,40,no,DM-ORS-01,2028-07-18,150
+Chlorhexidine Antiseptic 100ml,Chlorhexidine,First Aid,,,Bottle,500,850,700,10,no,DM-CHX-01,2028-02-19,35
+Hand Sanitizer 500ml,Alcohol-based,First Aid,,,Bottle,800,1300,1100,10,no,DM-SAN-01,2028-10-26,28
+Plaster Strips (box of 100),Adhesive bandage,First Aid,,,Box,500,900,700,8,no,DM-PLS-01,2029-05-14,20
+Antacid Suspension 200ml,Aluminium/magnesium hydroxide,Digestive Health,,,Bottle,550,950,800,12,no,DM-ANT-01,2027-11-21,30
+Omeprazole 20mg Capsules,Omeprazole,Digestive Health,,,Pack,700,1300,1050,15,no,DM-OME-01,2028-01-10,50
+Loperamide 2mg Capsules,Loperamide,Digestive Health,,,Pack,250,450,360,12,no,DM-LOP-01,2027-12-21,22
+Cetirizine 10mg Tablets,Cetirizine,Allergy,,,Pack,350,650,520,15,no,DM-CET-01,2028-03-10,55
+Loratadine 10mg Tablets,Loratadine,Allergy,,,Pack,400,700,560,12,no,DM-LOR-01,2027-11-11,8
+Cough Syrup 100ml,Dextromethorphan,Cough & Cold,,,Bottle,600,1100,900,12,no,DM-CGH-01,2027-11-01,26
+Vitamin B Complex Tablets,B vitamins,Vitamins,,,Pack,300,550,450,12,no,DM-VBC-01,2028-04-29,40
+Amoxicillin 500mg Capsules,Amoxicillin,Antibiotics,,,Pack,900,1800,1400,20,yes,DM-AMX-01,2027-09-22,70
+Ciprofloxacin 500mg Tablets,Ciprofloxacin,Antibiotics,,,Pack,700,1500,1200,15,yes,DM-CIP-01,2027-09-02,45
+Metronidazole 400mg Tablets,Metronidazole,Antibiotics,,,Pack,250,500,400,20,yes,DM-MET-01,2026-12-21,60
+Azithromycin 500mg Tablets,Azithromycin,Antibiotics,,,Pack,1200,2400,1900,10,yes,DM-AZI-01,2027-10-22,18
+Artemether-Lumefantrine 20/120mg,Artemether-Lumefantrine,Antimalarials,,,Pack,900,1800,1400,25,yes,DM-ALU-01,2028-01-20,90
+Amlodipine 5mg Tablets,Amlodipine,Cardiovascular,,,Pack,450,900,720,12,yes,DM-AML-01,2028-03-20,38
+Metformin 500mg Tablets,Metformin,Diabetes,,,Pack,350,700,560,15,yes,DM-MTF-01,2028-04-09,52
+Salbutamol Inhaler 100mcg,Salbutamol,Respiratory,,,Inhaler,1800,3200,2700,6,yes,DM-SAL-01,2027-12-11,12
+Clotrimazole Cream 1%,Clotrimazole,Skin Care,,,Tube,600,1100,900,10,no,DM-CLO-01,2028-01-10,20
+Iron & Folic Acid Tablets,Ferrous fumarate + folic acid,Women's Health,,,Pack,800,1500,1250,10,no,DM-IFA-01,2028-01-30,30
+Infant Zinc Syrup 100ml,Zinc,Pediatrics,,,Bottle,550,950,800,10,no,DM-IZS-01,2027-10-02,0
+Expired demo item (for alert testing),Demo,First Aid,,,Pack,100,200,150,5,no,DM-EXP-01,2026-11-06,6

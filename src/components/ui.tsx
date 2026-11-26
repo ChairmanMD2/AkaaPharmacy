@@ -44,7 +44,7 @@ export function SearchInput({ value, onChange, placeholder, inputRef, className,
   );
 }
 
-export function Card({ className, children, ...p }: { className?: string; children: ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
+export function Card({ className, children, ...p }: React.ComponentProps<'div'>) {
   return <div {...p} className={cx('rounded-xl border border-line bg-surface shadow-card', className)}>{children}</div>;
 }
 

@@ -2,12 +2,12 @@ import { db, getMeta, setMeta } from './db';
 import { fetchAll, isNetworkError, errMsg, supabase } from './supabase';
 import type { Batch, Drug, PendingSale } from './types';
 import { setCurrency, todayISO, uid } from './format';
+import { singleFlight } from './singleFlight';
 
 const DRUG_COLS =
   'id,name,generic_name,category,nafdac_number,barcode,unit_type,selling_price,wholesale_price,requires_prescription,reorder_level,is_active';
 const BATCH_COLS = 'id,drug_id,branch_id,batch_number,expiry_date,quantity_remaining,quantity_reserved';
 
-let running: Promise<SyncResult> | null = null;
 export interface SyncResult { pushed: number; failed: number; offline: boolean; message?: string }
 
 type Listener = () => void;
@@ -80,31 +80,36 @@ export async function pushSales(): Promise<{ pushed: number; failed: number; off
   return { pushed, failed, offline: false };
 }
 
-/** One sync cycle: push queued sales, then refresh stock/prices. Safe to call from anywhere; concurrent calls share one run. */
-export function syncAll(branchId: string | null): Promise<SyncResult> {
-  if (running) return running;
-  running = (async () => {
-    if (!navigator.onLine) return { pushed: 0, failed: 0, offline: true };
-    setState({ syncing: true });
-    try {
-      const r = await pushSales();
-      if (!r.offline) {
-        await pullCatalog(branchId);
-        await pullSettings();
-        setState({ lastSync: new Date().toISOString(), lastError: null });
-      }
-      return r;
-    } catch (e) {
-      const offline = isNetworkError(e);
-      setState({ lastError: offline ? null : errMsg(e) });
-      return { pushed: 0, failed: 0, offline, message: errMsg(e) };
-    } finally {
-      setState({ syncing: false });
-      running = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function syncOnce(branchId: string | null): Promise<SyncResult> {
+  if (!navigator.onLine) return { pushed: 0, failed: 0, offline: true };
+  setState({ syncing: true });
+  let result: SyncResult;
+  try {
+    const r = await pushSales();
+    if (!r.offline) {
+      await pullCatalog(branchId);
+      await pullSettings();
+      setState({ lastSync: new Date().toISOString(), lastError: null });
     }
-  })();
-  return running;
+    result = r;
+  } catch (e) {
+    const offline = isNetworkError(e);
+    setState({ lastError: offline ? null : errMsg(e) });
+    result = { pushed: 0, failed: 0, offline, message: errMsg(e) };
+  } finally {
+    setState({ syncing: false });
+  }
+  // The browser says we're online but the request failed (connection still settling): try again shortly.
+  if (result.offline && navigator.onLine && !retryTimer) {
+    retryTimer = setTimeout(() => { retryTimer = null; void syncAll(branchId); }, 8000);
+  }
+  return result;
 }
+
+/** One sync cycle: push queued sales, then refresh stock/prices. Concurrent calls share one run. */
+export const syncAll = singleFlight(syncOnce);
 
 export async function retrySale(id: string) {
   await db.pending.update(id, { status: 'pending', error: undefined });

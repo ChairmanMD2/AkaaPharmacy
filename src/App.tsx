@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './lib/auth';
 import { ToastProvider } from './components/toast';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import SetPassword from './pages/SetPassword';
 import { Button, Card, Spinner } from './components/ui';
 import { can, isCourier, type Feature } from './lib/permissions';
 
@@ -26,8 +27,10 @@ function Guard({ feature, children }: { feature: Feature; children: ReactElement
 }
 
 function Gate() {
-  const { session, profile, loading, signOut } = useAuth();
+  const { session, profile, loading, signOut, recovery, mustChange } = useAuth();
   if (loading) return <Spinner label="Loading…" />;
+  if (session && recovery) return <SetPassword reason="recovery" />;
+  if (session && mustChange) return <SetPassword reason="first" />;
   if (!session && !profile) return <Login />;
   if (!profile) return <Spinner label="Loading your account…" />;
   if (!profile.is_active || profile.role === 'customer') {

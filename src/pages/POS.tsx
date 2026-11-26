@@ -30,6 +30,7 @@ export default function POS() {
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<PendingSale | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const cartRef = useRef<HTMLDivElement>(null);
   const canEditPrice = profile?.role === 'admin' || profile?.role === 'pharmacist';
 
   const avail = useMemo(() => {
@@ -144,7 +145,7 @@ export default function POS() {
   if (!drugs || !batches) return <Spinner label="Loading stock…" />;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
+    <div className="grid gap-4 pb-20 lg:grid-cols-[1fr_400px] lg:pb-0">
       <div className="min-w-0">
         <div className="mb-3 flex items-center gap-2">
           <SearchInput inputRef={searchRef} onKeyDown={onScan} value={q} onChange={setQ} placeholder="Search name, generic or scan barcode…  (F2)" className="flex-1" />
@@ -181,7 +182,7 @@ export default function POS() {
         )}
       </div>
 
-      <Card className="flex h-fit flex-col lg:sticky lg:top-0">
+      <Card ref={cartRef} className="flex h-fit flex-col lg:sticky lg:top-0">
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <h2 className="font-semibold">Current sale</h2>
           {cart.length > 0 && <button className="text-xs text-muted hover:text-bad" onClick={() => setCart([])}>Clear</button>}
@@ -253,6 +254,12 @@ export default function POS() {
           <p className="text-center text-[11px] text-muted">Ctrl + Enter to complete · Transfer / POS payments are verified later against the bank statement</p>
         </div>
       </Card>
+      {cart.length > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-line bg-surface px-4 py-3 shadow-card lg:hidden no-print">
+          <div><p className="text-xs text-muted">{cart.reduce((s, l) => s + l.qty, 0)} item(s)</p><p className="text-lg font-semibold tnum">{money(total)}</p></div>
+          <Button variant="primary" size="lg" onClick={() => cartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Review &amp; pay</Button>
+        </div>
+      )}
       {done && <ReceiptModal sale={done} onClose={() => { setDone(null); searchRef.current?.focus(); }} />}
     </div>
   );

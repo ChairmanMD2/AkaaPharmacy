@@ -10,6 +10,10 @@ interface AuthCtx {
   profile: Profile | null;
   loading: boolean;
   offlineMode: boolean;
+  recovery: boolean;
+  mustChange: boolean;
+  sendReset: (email: string) => Promise<string | null>;
+  setPassword: (password: string) => Promise<string | null>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -26,10 +30,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [offlineMode, setOfflineMode] = useState(false);
+  const [recovery, setRecovery] = useState(false);
 
   const loadProfile = useCallback(async (s: Session | null) => {
     if (!s) { setProfile(null); return; }
-    const { data, error } = await supabase.from('profiles').select('id,full_name,phone,role,branch_id,is_active').eq('id', s.user.id).maybeSingle();
+    const { data, error } = await supabase.from('profiles').select('id,full_name,email,phone,role,branch_id,is_active').eq('id', s.user.id).maybeSingle();
     if (data) {
       setProfile(data as Profile);
       localStorage.setItem(CACHE_KEY, JSON.stringify(data));
@@ -56,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true);
       if (event === 'SIGNED_OUT') { setProfile(null); localStorage.removeItem(CACHE_KEY); }
       else if (s) setTimeout(() => loadProfile(s), 0);
     });
@@ -73,8 +79,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   }, []);
 
+  const sendReset = useCallback(async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+    return error ? error.message : null;
+  }, []);
+
+  const setPassword = useCallback(async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password, data: { must_change_password: false } });
+    if (error) return error.message;
+    setRecovery(false);
+    return null;
+  }, []);
+
   const refreshProfile = useCallback(async () => { await loadProfile(session); }, [session, loadProfile]);
 
-  const value = useMemo(() => ({ session, profile, loading, offlineMode, signIn, signOut, refreshProfile }), [session, profile, loading, offlineMode, signIn, signOut, refreshProfile]);
+  const mustChange = !!(session?.user?.user_metadata as any)?.must_change_password;
+  const value = useMemo(
+    () => ({ session, profile, loading, offlineMode, recovery, mustChange, sendReset, setPassword, signIn, signOut, refreshProfile }),
+    [session, profile, loading, offlineMode, recovery, mustChange, sendReset, setPassword, signIn, signOut, refreshProfile],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
