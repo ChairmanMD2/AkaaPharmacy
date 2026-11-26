@@ -50,6 +50,14 @@ export function ReceiptModal({ sale, onClose, title = 'Sale complete' }: { sale:
   return (
     <>
       <Modal title={title} onClose={onClose} footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" onClick={() => window.print()}><Printer size={16} />Print receipt</Button></>}>
+        {title === 'Sale complete' && (
+          <div className="mb-3 flex flex-col items-center gap-1" aria-hidden>
+            <svg width="56" height="56" viewBox="0 0 56 56" className="check-ring">
+              <circle cx="28" cy="28" r="26" fill="var(--ok-soft)" stroke="var(--ok)" strokeWidth="2" />
+              <path className="check-path" d="M17 29l8 8 14-17" fill="none" stroke="var(--ok)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        )}
         <div className="mx-auto w-fit rounded-lg border border-line bg-white shadow-card"><ReceiptBody sale={sale} settings={settings} /></div>
       </Modal>
       {createPortal(<div className="receipt-print"><ReceiptBody sale={sale} settings={settings} /></div>, document.body)}

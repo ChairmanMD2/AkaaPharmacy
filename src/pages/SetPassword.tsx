@@ -6,8 +6,8 @@ import { PasswordForm } from '../components/PasswordForm';
 export default function SetPassword({ reason }: { reason: 'recovery' | 'first' }) {
   const { signOut } = useAuth();
   return (
-    <div className="flex min-h-full items-center justify-center p-4">
-      <Card className="w-full max-w-sm p-6">
+    <div className="bg-login flex min-h-full items-center justify-center p-4">
+      <Card className="anim-up w-full max-w-sm p-6 shadow-lift">
         <div className="mb-5 flex flex-col items-center gap-3 text-center">
           <Logo size={48} />
           <div>

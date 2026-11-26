@@ -51,7 +51,7 @@ function SyncPill({ onOpen }: { onOpen: () => void }) {
   const waiting = useLiveQuery(() => db.pending.where('status').anyOf('pending', 'syncing').count(), [], 0);
   const errors = useLiveQuery(() => db.pending.where('status').equals('error').count(), [], 0);
   return (
-    <button onClick={onOpen} className={cx('flex h-9 items-center gap-2 rounded-full border px-3 text-xs font-medium transition',
+    <button onClick={onOpen} className={cx('flex h-9 items-center gap-2 rounded-full border px-3 text-xs font-medium transition', sync.syncing && 'animate-pulse',
       !online ? 'border-transparent bg-warnsoft text-warn' : errors ? 'border-transparent bg-badsoft text-bad' : 'border-line bg-surface text-muted hover:text-fg')}
       title="Sync status">
       {sync.syncing ? <RefreshCw size={14} className="animate-spin" /> : online ? <Cloud size={14} /> : <CloudOff size={14} />}
@@ -168,7 +168,10 @@ export default function Layout() {
   const toggleTheme = () => {
     const next = !dark;
     setDark(next);
-    document.documentElement.classList.toggle('dark', next);
+    const root = document.documentElement;
+    root.classList.add('theme-anim');                 // smooth cross-fade of colours for a moment
+    root.classList.toggle('dark', next);
+    setTimeout(() => root.classList.remove('theme-anim'), 350);
     try { localStorage.setItem('akaa_theme', next ? 'dark' : 'light'); } catch { /* ignore */ }
   };
 
@@ -178,8 +181,9 @@ export default function Layout() {
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
         {nav.map((n) => (
           <NavLink key={n.to} to={n.to} end={n.to === '/'}
-            className={({ isActive }) => cx('flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition', isActive ? 'bg-brandsoft text-brand' : 'text-muted hover:bg-surface2 hover:text-fg')}>
-            <n.icon size={18} />{n.label}
+            className={({ isActive }) => cx('group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150',
+              isActive ? 'bg-brandsoft text-brand before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-brand' : 'text-muted hover:bg-surface2 hover:text-fg hover:translate-x-0.5')}>
+            <n.icon size={18} className="transition-transform duration-150 group-hover:scale-110" />{n.label}
           </NavLink>
         ))}
       </nav>
@@ -222,7 +226,7 @@ export default function Layout() {
             {offlineMode ? 'Offline mode: signed in with the last known account. Sales are saved on this device and sync later.' : 'You are offline. Selling continues normally; everything uploads when the connection returns.'}
           </div>
         )}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-5"><div className="mx-auto max-w-7xl"><Outlet /></div></main>
+        <main className="flex-1 overflow-y-auto p-3 sm:p-5"><div key={loc.pathname} className="route-enter mx-auto max-w-7xl"><Outlet /></div></main>
       </div>
       {account && (
         <Modal title="My account" onClose={() => setAccount(false)}>

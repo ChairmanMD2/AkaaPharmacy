@@ -4,6 +4,12 @@ Offline-first pharmacy POS, inventory, orders and delivery-handoff system (insta
 
 **Stack:** React 19 + Vite + TypeScript + Tailwind v4 · Dexie (IndexedDB) for offline · Supabase (Postgres, Auth, RLS, Storage) · `vite-plugin-pwa` · Vercel.
 
+## Design priorities
+
+* **Primarily a computer app.** The main use is on the pharmacy's Windows counter PC and on office computers (keyboard and mouse, barcode scanner, thermal printer). Screens are designed desktop-first. Phone and tablet layouts are supported and kept usable (riders and quick admin checks), but desktop speed and ergonomics come first when there is a trade-off.
+* **Fast and reliable beats flashy.** Motion is CSS-only and subtle, and it switches off for people who prefer reduced motion.
+* **Works offline** at the counter; everything else needs a connection.
+
 ## What's in the box
 
 | Module | Works offline? | Notes |

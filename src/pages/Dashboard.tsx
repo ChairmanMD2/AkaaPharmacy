@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { AlertTriangle, BadgeCheck, CloudUpload, ClipboardList, Hourglass, ListPlus, PackageMinus, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
@@ -56,14 +57,14 @@ export default function Dashboard() {
     <>
       <PageHeader title={`Hello, ${profile?.full_name?.split(' ')[0] || 'there'}`} subtitle="Here is what needs attention today." />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Today's sales" value={o ? money(o.todayTotal) : '—'} hint={o ? `${o.todayCount} sale(s)` : online.loading ? 'loading…' : 'needs connection'} />
-        <Stat label="Waiting to upload" value={num(waiting)} tone={waiting ? 'warn' : undefined} hint="sales on this device" />
-        <Stat label="Payments to verify" value={o ? num(o.pendingPay) : '—'} tone={o && o.pendingPay ? 'warn' : undefined} hint="transfers / POS / COD" />
-        <Stat label="Sales needing review" value={o ? num(o.review) : '—'} tone={o && o.review ? 'bad' : undefined} />
-        <Stat label="Open orders" value={o ? num(o.orders) : '—'} />
-        <Stat label="Open wish list" value={o ? num(o.wish) : '—'} hint="unmet requests" />
-        <Stat label="Low / out of stock" value={num(stock.low.length)} tone={stock.low.length ? 'warn' : 'ok'} />
-        <Stat label="Expiring ≤ 90 days" value={num(stock.soon.length)} tone={stock.expired.length ? 'bad' : stock.soon.length ? 'warn' : 'ok'} hint={stock.expired.length ? `${stock.expired.length} batch(es) expired in stock` : undefined} />
+        <Stat icon={TrendingUp} label="Today's sales" value={o ? money(o.todayTotal) : '—'} hint={o ? `${o.todayCount} sale(s)` : online.loading ? 'loading…' : 'needs connection'} />
+        <Stat icon={CloudUpload} label="Waiting to upload" value={num(waiting)} tone={waiting ? 'warn' : undefined} hint="sales on this device" />
+        <Stat icon={BadgeCheck} label="Payments to verify" value={o ? num(o.pendingPay) : '—'} tone={o && o.pendingPay ? 'warn' : undefined} hint="transfers / POS / COD" />
+        <Stat icon={AlertTriangle} label="Sales needing review" value={o ? num(o.review) : '—'} tone={o && o.review ? 'bad' : undefined} />
+        <Stat icon={ClipboardList} label="Open orders" value={o ? num(o.orders) : '—'} />
+        <Stat icon={ListPlus} label="Open wish list" value={o ? num(o.wish) : '—'} hint="unmet requests" />
+        <Stat icon={PackageMinus} label="Low / out of stock" value={num(stock.low.length)} tone={stock.low.length ? 'warn' : 'ok'} />
+        <Stat icon={Hourglass} label="Expiring ≤ 90 days" value={num(stock.soon.length)} tone={stock.expired.length ? 'bad' : stock.soon.length ? 'warn' : 'ok'} hint={stock.expired.length ? `${stock.expired.length} batch(es) expired in stock` : undefined} />
       </div>
       {online.error && <p className="mt-3 text-xs text-muted">Live figures unavailable right now ({online.error}). Stock figures come from this device.</p>}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
