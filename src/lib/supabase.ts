@@ -20,6 +20,18 @@ export function errMsg(err: unknown): string {
   return e?.message || e?.error_description || String(err);
 }
 
+/** Calls the admin-only account function (runs server-side with the service key). */
+export async function callAdmin<T = any>(body: Record<string, unknown>): Promise<{ data?: T; error?: string }> {
+  const { data, error } = await supabase.functions.invoke('admin-users', { body });
+  if (error) {
+    let msg = error.message;
+    try { const j = await (error as any).context?.json?.(); if (j?.error) msg = j.error; } catch { /* keep the generic message */ }
+    return { error: msg };
+  }
+  if ((data as any)?.error) return { error: (data as any).error };
+  return { data: data as T };
+}
+
 /** Fetch every row of a query, 1000 at a time. */
 export async function fetchAll<T = any>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>): Promise<T[]> {
   const out: T[] = [];

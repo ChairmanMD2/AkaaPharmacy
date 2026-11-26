@@ -37,7 +37,9 @@ SQL lives in `supabase/migrations/` (applied to the AkaaPharmacy project). Key r
 
 ## Operations
 
-* **Add staff:** Supabase → Authentication → Users → *Add user* (auto-confirm), then in the app: **Users → Edit** to set role, branch and activate. New accounts are inactive until activated.
+* **Add staff:** in the app, **Users → Add user**. A one-time temporary password is generated (server function `admin-users`, admin-only); the person must choose their own password at first sign-in.
+* **Forgotten password:** staff can use *Forgot password?* on the sign-in page, but Supabase's built-in email only delivers to your own Supabase team members until custom SMTP is configured. Until then an admin uses **Users → key icon** (temporary password), which always works.
+* **Change own password:** sidebar → *Account*.
 * **Public sign-ups** are disabled in Supabase Auth settings.
 * **Paystack:** not wired yet. `record_paystack_payment()` exists for a server-side function that must verify the transaction with Paystack using the secret key (kept in Supabase secrets, never in this repo).
 
@@ -54,4 +56,14 @@ VITE_SUPABASE_ANON_KEY
 
 ## Known gaps / roadmap
 
-Customer storefront · Paystack · courier mobile app (the restricted rider/courier role and API surface already exist) · supplier & purchase-order screens · profit report from purchase costs · in-app user invites · client receipt template · logo/icons (placeholders in `public/`).
+Customer storefront · Paystack · courier mobile app (the restricted rider/courier role and API surface already exist) · supplier & purchase-order screens · profit report from purchase costs · client receipt template · logo/icons (placeholders in `public/`).
+
+## Stock import format (CSV or .xlsx)
+
+One row per **batch**. Header row required. Columns (only `name` is mandatory; `selling_price` is required for new products):
+
+`name, generic_name, category, nafdac_number, barcode, unit_type, cost_price, selling_price, wholesale_price, reorder_level, requires_prescription, batch_number, expiry_date, quantity`
+
+* `expiry_date` as `YYYY-MM-DD`; `quantity` is the physical count for that batch (re-importing the same file never double-counts).
+* `requires_prescription`: yes/no. Existing products are matched by barcode, then name, and updated.
+* Format the barcode column as **Text** in Excel to keep leading zeros. Download the template from Inventory → Bulk import.

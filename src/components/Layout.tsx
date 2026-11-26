@@ -3,15 +3,16 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   BarChart3, CloudOff, Cloud, Command, LayoutDashboard, ListPlus, LogOut, Menu, Moon, Package, Receipt, RefreshCw,
-  Settings as Cog, ShoppingCart, Sun, Truck, Users, Wallet, ClipboardList, X, AlertTriangle,
+  Settings as Cog, ShoppingCart, Sun, Truck, Users, Wallet, ClipboardList, X, AlertTriangle, KeyRound,
 } from 'lucide-react';
+import { PasswordForm } from './PasswordForm';
 import { useAuth } from '../lib/auth';
 import { can, type Feature } from '../lib/permissions';
 import { ROLE_LABEL } from '../lib/types';
 import { db } from '../lib/db';
 import { getSyncState, retrySale, subscribeSync, syncAll } from '../lib/sync';
 import { useOnline } from '../lib/hooks';
-import { cx, Badge, Button, Drawer } from './ui';
+import { cx, Badge, Button, Drawer, Modal } from './ui';
 import { fmtDateTime, money } from '../lib/format';
 import { useToast } from './toast';
 
@@ -137,6 +138,7 @@ export default function Layout() {
   const [open, setOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [palette, setPalette] = useState(false);
+  const [account, setAccount] = useState(false);
   const [dark, setDark] = useState(document.documentElement.classList.contains('dark'));
   const loc = useLocation();
   const online = useOnline();
@@ -182,7 +184,10 @@ export default function Layout() {
       </nav>
       <div className="border-t border-line p-3">
         <div className="mb-2 px-1"><p className="truncate text-sm font-medium">{profile?.full_name || 'Signed in'}</p><p className="text-xs text-muted">{profile ? ROLE_LABEL[profile.role] : ''}</p></div>
-        <Button className="w-full" onClick={signOut}><LogOut size={16} />Sign out</Button>
+        <div className="flex gap-2">
+          <Button className="flex-1 whitespace-nowrap px-2" onClick={() => { setOpen(false); setAccount(true); }}><KeyRound size={15} />Account</Button>
+          <Button className="flex-1 whitespace-nowrap px-2" onClick={signOut}><LogOut size={15} />Sign out</Button>
+        </div>
       </div>
     </div>
   );
@@ -218,6 +223,17 @@ export default function Layout() {
         )}
         <main className="flex-1 overflow-y-auto p-3 sm:p-5"><div className="mx-auto max-w-7xl"><Outlet /></div></main>
       </div>
+      {account && (
+        <Modal title="My account" onClose={() => setAccount(false)}>
+          <dl className="mb-4 grid grid-cols-2 gap-3 text-sm">
+            <div><dt className="text-xs text-muted">Name</dt><dd>{profile?.full_name || '—'}</dd></div>
+            <div><dt className="text-xs text-muted">Role</dt><dd>{profile ? ROLE_LABEL[profile.role] : ''}</dd></div>
+            <div className="col-span-2"><dt className="text-xs text-muted">Email</dt><dd>{profile?.email || '—'}</dd></div>
+          </dl>
+          <h3 className="mb-2 text-sm font-semibold">Change password</h3>
+          <PasswordForm submitLabel="Update password" onDone={() => setAccount(false)} />
+        </Modal>
+      )}
       {syncOpen && <SyncDrawer onClose={() => setSyncOpen(false)} />}
       {palette && <CommandPalette items={nav.map((n) => ({ label: n.label, to: n.to }))} onClose={() => setPalette(false)} />}
     </div>

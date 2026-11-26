@@ -3,6 +3,7 @@ export type Role = 'admin' | 'pharmacist' | 'cashier' | 'inventory_officer' | 'c
 export interface Profile {
   id: string;
   full_name: string;
+  email?: string | null;
   phone: string | null;
   role: Role;
   branch_id: string | null;
