@@ -2,46 +2,56 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Semantic design tokens: every colour in the app comes from here, so light/dark are consistent. */
+/* Inter (variable) — only the two subsets we need; the second holds the naira sign ₦. Bundled, so it works offline. */
+@font-face {
+  font-family: "Inter Variable"; font-style: normal; font-display: swap; font-weight: 100 900;
+  src: url("./assets/fonts/inter-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter Variable"; font-style: normal; font-display: swap; font-weight: 100 900;
+  src: url("./assets/fonts/inter-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Semantic design tokens: every colour comes from here, so light and dark stay consistent. */
 :root {
-  --bg: #f4f6f8;
+  --bg: #f3f6f8;
   --surface: #ffffff;
-  --surface-2: #f8fafb;
-  --line: #e3e8ee;
-  --fg: #0f1720;
-  --muted: #5b6776;
+  --surface-2: #f5f8fa;
+  --line: #e2e8ee;
+  --fg: #0d1520;
+  --muted: #566475;
   --brand: #0f766e;
+  --brand-2: #0d9488;          /* gradient partner for primary actions */
   --brand-fg: #ffffff;
-  --brand-soft: #e3f4f1;
-  --ok: #15803d;
-  --ok-soft: #e3f6ea;
-  --warn: #b45309;
-  --warn-soft: #fdf1dc;
-  --bad: #b91c1c;
-  --bad-soft: #fde8e8;
-  --info: #1d4ed8;
-  --info-soft: #e5edfd;
-  --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 4px 14px rgb(16 24 40 / 0.05);
+  --brand-soft: #e0f4f1;
+  --ok: #15803d;      --ok-soft: #e2f6e9;
+  --warn: #b45309;    --warn-soft: #fcf0da;
+  --bad: #b91c1c;     --bad-soft: #fde7e7;
+  --info: #1d4ed8;    --info-soft: #e4ecfd;
+  --shadow: 0 1px 2px rgb(16 24 40 / .04), 0 8px 24px -10px rgb(16 24 40 / .10);
+  --shadow-hover: 0 2px 4px rgb(16 24 40 / .05), 0 14px 30px -10px rgb(16 24 40 / .18);
+  --glow: color-mix(in srgb, var(--brand) 8%, transparent);
 }
 .dark {
-  --bg: #0c1116;
-  --surface: #141b22;
-  --surface-2: #18212a;
-  --line: #26313c;
-  --fg: #e8edf2;
-  --muted: #93a1b1;
+  --bg: #0a0f14;
+  --surface: #121a21;
+  --surface-2: #17212a;
+  --line: #243039;
+  --fg: #e7edf3;
+  --muted: #8fa0b2;
   --brand: #2dd4bf;
-  --brand-fg: #04201c;
-  --brand-soft: #10302d;
-  --ok: #4ade80;
-  --ok-soft: #12301f;
-  --warn: #fbbf24;
-  --warn-soft: #3a2a0b;
-  --bad: #f87171;
-  --bad-soft: #3b1616;
-  --info: #7aa2ff;
-  --info-soft: #14233f;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.3);
+  --brand-2: #5eead4;
+  --brand-fg: #03201b;
+  --brand-soft: #0f2e2b;
+  --ok: #4ade80;      --ok-soft: #11301f;
+  --warn: #fbbf24;    --warn-soft: #392a0b;
+  --bad: #f87171;     --bad-soft: #3a1717;
+  --info: #7ea4ff;    --info-soft: #14233f;
+  --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 10px 28px -12px rgb(0 0 0 / .55);
+  --shadow-hover: 0 2px 4px rgb(0 0 0 / .45), 0 16px 34px -12px rgb(0 0 0 / .7);
+  --glow: color-mix(in srgb, var(--brand) 10%, transparent);
 }
 
 @theme inline {
@@ -54,38 +64,80 @@
   --color-brand: var(--brand);
   --color-brandfg: var(--brand-fg);
   --color-brandsoft: var(--brand-soft);
-  --color-ok: var(--ok);
-  --color-oksoft: var(--ok-soft);
-  --color-warn: var(--warn);
-  --color-warnsoft: var(--warn-soft);
-  --color-bad: var(--bad);
-  --color-badsoft: var(--bad-soft);
-  --color-info: var(--info);
-  --color-infosoft: var(--info-soft);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-ok: var(--ok);          --color-oksoft: var(--ok-soft);
+  --color-warn: var(--warn);      --color-warnsoft: var(--warn-soft);
+  --color-bad: var(--bad);        --color-badsoft: var(--bad-soft);
+  --color-info: var(--info);      --color-infosoft: var(--info-soft);
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --shadow-card: var(--shadow);
+  --shadow-lift: var(--shadow-hover);
 }
 
 html, body, #root { height: 100%; }
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(900px 480px at 12% -8%, var(--glow), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--fg);
   font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
   font-size: 14px;
+  letter-spacing: -0.005em;
 }
+h1, h2, h3 { letter-spacing: -0.02em; }
 * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
 input, select, textarea, button { font: inherit; }
 .tnum { font-variant-numeric: tabular-nums; }
+::selection { background: color-mix(in srgb, var(--brand) 25%, transparent); }
 
+/* ───────── primary action: gradient + soft glow ───────── */
+.btn-primary {
+  background-image: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  color: var(--brand-fg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 6px 14px -6px color-mix(in srgb, var(--brand) 60%, transparent);
+}
+.btn-primary:hover:not(:disabled) { filter: brightness(1.06); box-shadow: 0 1px 2px rgb(0 0 0 / .14), 0 10px 20px -8px color-mix(in srgb, var(--brand) 70%, transparent); }
+
+/* ───────── motion (CSS only: transform/opacity, so it stays smooth on a modest PC) ───────── */
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
-@keyframes slidein { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes slideup { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
-.anim-fade { animation: fadein .15s ease-out; }
-.anim-slide { animation: slidein .2s ease-out; }
-.anim-up { animation: slideup .18s ease-out; }
-@media (prefers-reduced-motion: reduce) { .anim-fade, .anim-slide, .anim-up { animation: none; } }
+@keyframes slidein { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes slideup { from { transform: translateY(14px) scale(.985); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes routein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes shimmer { 0% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
+@keyframes flash { 0% { background-color: color-mix(in srgb, var(--brand) 22%, transparent); } 100% { background-color: transparent; } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes ringpop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
+
+.anim-fade { animation: fadein .16s ease-out; }
+.anim-slide { animation: slidein .24s cubic-bezier(.2, .8, .2, 1); }
+.anim-up { animation: slideup .2s cubic-bezier(.2, .8, .2, 1); }
+.route-enter { animation: routein .24s cubic-bezier(.2, .8, .2, 1); }
+.anim-flash { animation: flash .8s ease-out; }
+.check-ring { animation: ringpop .45s cubic-bezier(.2, .8, .2, 1) both; }
+.check-path { stroke-dasharray: 26; stroke-dashoffset: 26; animation: draw .4s .25s ease-out forwards; }
+
+.skeleton {
+  background: linear-gradient(100deg, var(--surface-2) 30%, color-mix(in srgb, var(--line) 70%, var(--surface-2)) 50%, var(--surface-2) 70%);
+  background-size: 300% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 8px;
+}
+
+/* subtle depth on interactive surfaces */
+.lift { transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+.lift:hover:not(:disabled) { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+.lift:active:not(:disabled) { transform: translateY(0) scale(.985); }
+tbody tr { transition: background-color .12s ease; }
+
+/* smooth light↔dark switch (class is added briefly while toggling) */
+.theme-anim, .theme-anim * { transition: background-color .28s ease, border-color .28s ease, color .28s ease, fill .28s ease, box-shadow .28s ease !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
 
 /* 80mm thermal receipt: only the receipt is printed */
 .receipt-print { display: none; }
@@ -103,4 +155,12 @@ input, select, textarea, button { font: inherit; }
   .printable, .printable * { visibility: visible !important; }
   .printable { position: absolute; left: 0; top: 0; width: 100%; }
   .print-only { display: block !important; }
+}
+
+/* sign-in backdrop */
+.bg-login {
+  background:
+    radial-gradient(800px 460px at 12% 0%, color-mix(in srgb, var(--brand) 16%, transparent), transparent 70%),
+    radial-gradient(700px 420px at 100% 100%, color-mix(in srgb, var(--info) 12%, transparent), transparent 70%),
+    var(--bg);
 }

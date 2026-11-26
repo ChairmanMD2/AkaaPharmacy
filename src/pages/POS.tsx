@@ -31,6 +31,8 @@ export default function POS() {
   const [done, setDone] = useState<PendingSale | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const cartRef = useRef<HTMLDivElement>(null);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const flash = (id: string) => { setFlashId(null); requestAnimationFrame(() => { setFlashId(id); setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 850); }); };
   const canEditPrice = profile?.role === 'admin' || profile?.role === 'pharmacist';
 
   const avail = useMemo(() => {
@@ -67,6 +69,7 @@ export default function POS() {
 
   const add = (d: Drug) => {
     const have = avail.get(d.id) ?? 0;
+    if (have > 0) flash(d.id);
     setCart((c) => {
       const ex = c.find((l) => l.drug.id === d.id);
       if (ex) {
@@ -161,15 +164,15 @@ export default function POS() {
               const soon = exp ? daysUntil(exp) <= 90 : false;
               return (
                 <button key={d.id} disabled={a < 1} onClick={() => add(d)}
-                  className="group flex flex-col rounded-xl border border-line bg-surface p-3 text-left shadow-card transition hover:border-brand disabled:cursor-not-allowed disabled:opacity-50">
+                  className="lift group flex flex-col rounded-2xl border border-line bg-surface p-3 text-left shadow-card hover:border-brand disabled:cursor-not-allowed disabled:opacity-50">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium leading-snug">{d.name}</p>
                     {d.requires_prescription && <span title="Prescription required" className="shrink-0 text-warn"><ShieldAlert size={16} /></span>}
                   </div>
                   <p className="truncate text-xs text-muted">{d.generic_name || d.category || d.unit_type}</p>
-                  <div className="mt-2 flex items-end justify-between">
+                  <div className="mt-2 flex flex-wrap items-end justify-between gap-x-3 gap-y-1.5">
                     <span className="text-base font-semibold tnum">{money(d.selling_price)}</span>
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1">
                       {soon && a > 0 && <Badge tone="warn">Exp {exp}</Badge>}
                       <Badge tone={a < 1 ? 'bad' : a <= d.reorder_level ? 'warn' : 'ok'}>{a < 1 ? 'Out' : `${num(a)} left`}</Badge>
                     </div>
@@ -191,7 +194,7 @@ export default function POS() {
           {!cart.length && <Empty title="Cart is empty" hint="Search or scan a product to begin." />}
           <ul className="divide-y divide-line">
             {cart.map((l) => (
-              <li key={l.drug.id} className="px-4 py-2.5">
+              <li key={l.drug.id} className={`px-4 py-2.5 ${flashId === l.drug.id ? 'anim-flash' : ''}`}>
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-medium leading-snug">{l.drug.name}</p>
                   <button aria-label={`Remove ${l.drug.name}`} onClick={() => setQty(l.drug.id, 0)} className="text-muted hover:text-bad"><Trash2 size={15} /></button>

@@ -1,19 +1,19 @@
 import { useEffect, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
-import { Loader2, X, Search } from 'lucide-react';
+import { Loader2, X, Search, Inbox, type LucideIcon } from 'lucide-react';
 
 export const cx = (...a: (string | false | null | undefined)[]) => a.filter(Boolean).join(' ');
 
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'ghost' | 'danger'; size?: 'sm' | 'md' | 'lg'; loading?: boolean };
 export function Button({ variant = 'secondary', size = 'md', loading, className, children, disabled, ...p }: BtnProps) {
   const v = {
-    primary: 'bg-brand text-brandfg hover:opacity-90 border-transparent',
-    secondary: 'bg-surface text-fg border-line hover:bg-surface2',
+    primary: 'btn-primary border-transparent',
+    secondary: 'bg-surface text-fg border-line hover:bg-surface2 hover:border-muted/40',
     ghost: 'bg-transparent text-fg border-transparent hover:bg-surface2',
-    danger: 'bg-bad text-white border-transparent hover:opacity-90',
+    danger: 'bg-bad text-white border-transparent hover:brightness-110 shadow-sm',
   }[variant];
   const s = { sm: 'h-8 px-2.5 text-xs', md: 'h-10 px-3.5 text-sm', lg: 'h-12 px-5 text-base' }[size];
   return (
-    <button {...p} disabled={disabled || loading} className={cx('inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border font-medium transition disabled:cursor-not-allowed disabled:opacity-50', v, s, className)}>
+    <button {...p} disabled={disabled || loading} className={cx('inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border font-medium transition duration-150 ease-out active:scale-[.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100', v, s, className)}>
       {loading && <Loader2 size={16} className="animate-spin" />}
       {children}
     </button>
@@ -45,7 +45,7 @@ export function SearchInput({ value, onChange, placeholder, inputRef, className,
 }
 
 export function Card({ className, children, ...p }: React.ComponentProps<'div'>) {
-  return <div {...p} className={cx('rounded-xl border border-line bg-surface shadow-card', className)}>{children}</div>;
+  return <div {...p} className={cx('rounded-2xl border border-line bg-surface shadow-card', className)}>{children}</div>;
 }
 
 const tone = {
@@ -61,12 +61,21 @@ export function Badge({ tone: t = 'neutral', children }: { tone?: keyof typeof t
 }
 
 export function Spinner({ label }: { label?: string }) {
-  return <div className="flex items-center justify-center gap-2 p-10 text-muted"><Loader2 className="animate-spin" size={18} />{label && <span className="text-sm">{label}</span>}</div>;
+  // Skeleton placeholders feel faster than a spinner and avoid the layout jumping when data arrives.
+  return (
+    <div className="p-5" role="status" aria-live="polite" aria-label={label ?? 'Loading'}>
+      <div className="space-y-3">
+        <div className="skeleton h-4 w-1/3" /><div className="skeleton h-10 w-full" /><div className="skeleton h-10 w-full" /><div className="skeleton h-10 w-5/6" />
+      </div>
+      {label && <p className="mt-4 flex items-center justify-center gap-2 text-xs text-muted"><Loader2 className="animate-spin" size={14} />{label}</p>}
+    </div>
+  );
 }
 
 export function Empty({ title, hint, action }: { title: string; hint?: string; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-1 px-4 py-12 text-center">
+    <div className="anim-fade flex flex-col items-center justify-center gap-1 px-4 py-12 text-center">
+      <div className="mb-2 grid h-12 w-12 place-items-center rounded-full bg-brandsoft text-brand"><Inbox size={22} /></div>
       <p className="font-medium">{title}</p>
       {hint && <p className="max-w-sm text-sm text-muted">{hint}</p>}
       {action && <div className="mt-3">{action}</div>}
@@ -91,10 +100,14 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   );
 }
 
-export function Stat({ label, value, hint, tone: t }: { label: string; value: ReactNode; hint?: string; tone?: 'ok' | 'warn' | 'bad' }) {
+export function Stat({ label, value, hint, tone: t, icon: Icon }: { label: string; value: ReactNode; hint?: string; tone?: 'ok' | 'warn' | 'bad'; icon?: LucideIcon }) {
+  const chip = t === 'bad' ? 'bg-badsoft text-bad' : t === 'warn' ? 'bg-warnsoft text-warn' : t === 'ok' ? 'bg-oksoft text-ok' : 'bg-brandsoft text-brand';
   return (
-    <Card className="p-4">
-      <p className="text-xs font-medium text-muted">{label}</p>
+    <Card className="lift p-4">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-medium text-muted">{label}</p>
+        {Icon && <span className={cx('grid h-8 w-8 shrink-0 place-items-center rounded-lg', chip)}><Icon size={16} /></span>}
+      </div>
       <p className={cx('mt-1 text-2xl font-semibold tnum', t === 'bad' && 'text-bad', t === 'warn' && 'text-warn', t === 'ok' && 'text-ok')}>{value}</p>
       {hint && <p className="mt-0.5 text-xs text-muted">{hint}</p>}
     </Card>

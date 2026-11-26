@@ -36,7 +36,7 @@ function Gate() {
   if (!profile) return <Spinner label="Loading your account…" />;
   if (!profile.is_active || profile.role === 'customer') {
     return (
-      <div className="flex min-h-full items-center justify-center p-4">
+      <div className="bg-login flex min-h-full items-center justify-center p-4">
         <Card className="max-w-md p-6 text-center">
           <h1 className="text-lg font-semibold">{profile.role === 'customer' ? 'Staff app' : 'Waiting for activation'}</h1>
           <p className="mt-2 text-sm text-muted">

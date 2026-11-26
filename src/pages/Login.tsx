@@ -32,8 +32,8 @@ export default function Login() {
 
   if (mode === 'forgot') {
     return (
-      <div className="flex min-h-full items-center justify-center p-4">
-        <Card className="w-full max-w-sm p-6">
+      <div className="bg-login flex min-h-full items-center justify-center p-4">
+        <Card className="anim-up w-full max-w-sm p-6 shadow-lift">
           <div className="mb-5 flex flex-col items-center gap-3 text-center">
             <Logo size={48} />
             <div><h1 className="text-xl font-semibold">Forgot password</h1><p className="text-sm text-muted">We will email you a reset link.</p></div>
@@ -58,8 +58,8 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center p-4">
-      <Card className="w-full max-w-sm p-6">
+    <div className="bg-login flex min-h-full items-center justify-center p-4">
+      <Card className="anim-up w-full max-w-sm p-6 shadow-lift">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
           <Logo size={52} />
           <div><h1 className="text-xl font-semibold">AkaaPharmacy</h1><p className="text-sm text-muted">Sign in to continue</p></div>
