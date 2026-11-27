@@ -10,6 +10,7 @@ import { useAuth } from '../lib/auth';
 import { can, type Feature } from '../lib/permissions';
 import { ROLE_LABEL } from '../lib/types';
 import { db } from '../lib/db';
+import { startRealtime } from '../lib/realtime';
 import { getSyncState, retrySale, setSyncBranch, subscribeSync, syncAll } from '../lib/sync';
 import { discardOp, retryOp } from '../lib/outbox';
 import { useOnline } from '../lib/hooks';
@@ -184,6 +185,13 @@ export default function Layout() {
     const t = setInterval(go, 60000);
     return () => { window.removeEventListener('online', go); clearInterval(t); };
   }, [profile?.branch_id]);
+
+  // Live updates from other devices (stock, sales, orders, lists) without waiting for the minute timer.
+  useEffect(() => {
+    if (!profile) return;
+    const branch = profile.branch_id ?? null;
+    return startRealtime(() => { void syncAll(branch); });
+  }, [profile?.id, profile?.branch_id]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); } };

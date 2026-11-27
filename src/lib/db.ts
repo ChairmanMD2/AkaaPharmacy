@@ -1,7 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { Batch, Drug, PendingSale } from './types';
 
-export type OpType = 'expense.add' | 'wish.add' | 'wish.update' | 'wish.fulfil' | 'supplier.add' | 'receipt.create';
+export type OpType = 'expense.add' | 'wish.add' | 'wish.update' | 'wish.fulfil' | 'supplier.add' | 'receipt.create' | 'order.payment' | 'shift.open' | 'shift.close';
 export interface OutboxOp {
   id: string;
   type: OpType;

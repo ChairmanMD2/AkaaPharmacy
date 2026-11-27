@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { isOnline, markOffline, onReconnect, subscribeConnectivity } from './connectivity';
 import { getCache, putCache } from './cache';
 import { isNetworkError } from './supabase';
+import { onDataChange } from './realtime';
 
 /** True when the server is actually reachable (not just "connected to Wi-Fi"). */
 export function useOnline() {
@@ -64,6 +65,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[], opts: AsyncOp
   useEffect(() => { dataRef.current = null; setData(null); setCachedAt(null); }, [key]);
   useEffect(() => { void run(); }, [run]);
   useEffect(() => onReconnect(() => { void run(); }), [run]);
+  useEffect(() => onDataChange(() => { void run(); }), [run]);      // someone changed something: refresh quietly
   return { data, loading, error, reload: run, setData: setBoth, cachedAt };
 }
 

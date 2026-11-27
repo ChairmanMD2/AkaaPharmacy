@@ -6,8 +6,10 @@ import { db } from '../lib/db';
 import { errMsg, supabase } from '../lib/supabase';
 import { syncAll } from '../lib/sync';
 import { useAsync, useOnline } from '../lib/hooks';
+import { summarizeWaiting, useWaitingSales } from '../lib/localSales';
+import { runOrQueue } from '../lib/outbox';
 import { useAuth } from '../lib/auth';
-import { fmtDateTime, money } from '../lib/format';
+import { fmtDateTime, money, uid } from '../lib/format';
 import { PAY_LABEL, type PayMethod } from '../lib/types';
 import { Badge, Button, Card, Drawer, Empty, ErrorBox, Field, Input, PageHeader, Spinner, Table, Td, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
@@ -27,22 +29,49 @@ export default function Shifts() {
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<any | null>(null);
   const [tick, setTick] = useState(0);
-  const waiting = useLiveQuery(() => db.pending_sales.where('status').anyOf('pending', 'syncing', 'error').count(), [], 0);
+  const waitingSales = useWaitingSales().filter((w) => !w.cashier_id || w.cashier_id === profile?.id);
+  const waiting = waitingSales.length;
 
-  const current = useAsync(async () => {
+  // Opening and closing a shift can happen offline: they wait in the outbox and upload (after the sales) when the connection returns.
+  const ops = useLiveQuery(async () => (await db.outbox.orderBy('created_at').toArray()).filter((o) => o.type === 'shift.open' || o.type === 'shift.close'), [], [] as any[]);
+  const opsKey = ops.map((o) => `${o.id}:${o.status}`).join(',');
+  const openOp = [...ops].reverse().find((o) => o.type === 'shift.open');
+  const closeOp = [...ops].reverse().find((o) => o.type === 'shift.close');
+
+  const server = useAsync(async () => {
     const { data, error } = await supabase.from('shifts').select('*').eq('cashier_id', profile!.id).eq('status', 'open').maybeSingle();
     if (error) throw error;
     return data as any | null;
-  }, [profile?.id], { cacheKey: 'shifts.current' });
+  }, [profile?.id, opsKey], { cacheKey: 'shifts.current' });
 
-  const summary = useAsync(async () => {
-    if (!current.data) return null;
-    const { data, error } = await supabase.rpc('shift_summary', { p_shift: current.data.id });
+  const localOpen = openOp ? { id: openOp.payload.id, opened_at: openOp.payload.opened_at, opening_float: openOp.payload.float, status: 'open', local: true } : null;
+  const base = server.data ?? localOpen;
+  const closedWaiting = !!closeOp && !!base && closeOp.payload.id === base.id;
+  const currentShift = closedWaiting ? null : base;
+  const current = { data: currentShift, loading: server.loading && !server.data && !localOpen, error: server.data || localOpen || !online ? null : server.error, reload: server.reload };
+
+  const summaryBase = useAsync(async () => {
+    if (!server.data) return null;
+    const { data, error } = await supabase.rpc('shift_summary', { p_shift: server.data.id });
     if (error) throw error;
     return data as Summary;
-  }, [current.data?.id, tick]);
+  }, [server.data?.id, tick, opsKey], { cacheKey: `shifts.summary.${server.data?.id ?? 'none'}` });
 
-  useEffect(() => { if (!current.data) return; const t = setInterval(() => setTick((x) => x + 1), 30000); return () => clearInterval(t); }, [current.data]);
+  // What the server knows, plus the sales still waiting on this device (so the cash-up is right even offline).
+  const summary = (() => {
+    if (!currentShift) return { data: null as Summary | null, error: null as string | null, reload: summaryBase.reload };
+    const b: Summary = summaryBase.data ?? { sales_count: 0, sales_total: 0, by_method: {}, cash_received: 0, change_given: 0, cash_refunds: 0, pending_verification: 0, opening_float: Number(currentShift.opening_float), expected_cash: Number(currentShift.opening_float) };
+    if (server.data && !summaryBase.data) return { data: null as Summary | null, error: summaryBase.error, reload: summaryBase.reload };
+    const mine = waitingSales.filter((w) => w.sold_at >= currentShift.opened_at);
+    const w = summarizeWaiting(mine);
+    const by_method = { ...b.by_method };
+    Object.entries(w.by_method).forEach(([m, v]) => { by_method[m] = (by_method[m] ?? 0) + v; });
+    const cash_received = Number(b.cash_received) + w.cash_received, change_given = Number(b.change_given) + w.change_given;
+    return { data: { ...b, sales_count: b.sales_count + w.count, sales_total: Number(b.sales_total) + w.total, by_method, cash_received, change_given,
+      expected_cash: Number(b.opening_float) + cash_received - change_given - Number(b.cash_refunds) } as Summary, error: null, reload: summaryBase.reload };
+  })();
+
+  useEffect(() => { if (!currentShift) return; const t = setInterval(() => setTick((x) => x + 1), 30000); return () => clearInterval(t); }, [currentShift?.id]);
 
   const history = useAsync(async () => {
     const { data, error } = await supabase.from('shifts').select('*').order('opened_at', { ascending: false }).limit(60);
@@ -51,37 +80,39 @@ export default function Shifts() {
     const { data: ps } = ids.length ? await supabase.from('profiles').select('id,full_name').in('id', ids) : { data: [] as any[] };
     const names = new Map((ps ?? []).map((p: any) => [p.id, p.full_name]));
     return (data ?? []).map((s: any) => ({ ...s, cashier: names.get(s.cashier_id) ?? '—' }));
-  }, [current.data?.id], { cacheKey: 'shifts.history' });
+  }, [currentShift?.id, opsKey], { cacheKey: 'shifts.history' });
 
   const start = async () => {
     setBusy(true);
-    const { error } = await supabase.rpc('open_shift', { p_float: Number(openFloat || 0) });
+    const r = await runOrQueue('shift.open', { id: uid(), float: Number(openFloat || 0), opened_at: new Date().toISOString() }, `Start shift (float ${money(Number(openFloat || 0))})`);
     setBusy(false);
-    if (error) return toast(errMsg(error), 'error');
-    toast('Shift started.'); setOpenFloat(''); current.reload();
+    if (r.error) return toast(r.error, 'error');
+    toast(r.queued ? 'Shift started on this device. It will be recorded online when the connection returns.' : 'Shift started.');
+    setOpenFloat(''); server.reload();
   };
 
   const s = summary.data;
   const diff = s && counted !== '' ? Number(counted) - s.expected_cash : null;
 
   const close = async () => {
-    if (!current.data || counted === '') return toast('Enter the cash you counted in the drawer.', 'error');
+    if (!currentShift || counted === '') return toast('Enter the cash you counted in the drawer.', 'error');
     setBusy(true);
-    const { error } = await supabase.rpc('close_shift', { p_shift: current.data.id, p_counted: Number(counted), p_note: note || null });
+    const r = await runOrQueue('shift.close', { id: currentShift.id, counted: Number(counted), note: note.trim() || null, closed_at: new Date().toISOString() }, `Close shift (counted ${money(Number(counted))})`);
     setBusy(false);
-    if (error) return toast(errMsg(error), 'error');
-    toast('Shift closed.'); setCounted(''); setNote(''); current.reload(); history.reload();
+    if (r.error) return toast(r.error, 'error');
+    toast(r.queued ? 'Shift closed on this device. The report will be recorded online when the connection returns.' : 'Shift closed.');
+    setCounted(''); setNote(''); server.reload(); history.reload();
   };
-
-  if (!online && !current.data) return <Card><Empty title="Cash-up needs an internet connection" hint="Selling keeps working offline. Reconnect to open or close a shift." /></Card>;
 
   return (
     <>
       <PageHeader title="Cash-up" subtitle="Start a shift with the till float and close it by counting the drawer" />
+      {closedWaiting && <p className="mb-3 rounded-lg bg-warnsoft p-3 text-sm text-warn">This shift is closed on this device and will be recorded online (after its sales upload) as soon as the connection returns. Check "Sync" at the top if it stays here.</p>}
       {current.loading && !current.data && current.data !== null ? <Spinner /> : current.error ? <ErrorBox message={current.error} onRetry={current.reload} /> : !current.data ? (
         <Card className="mb-4 max-w-xl p-5">
           <h2 className="font-semibold">No shift open</h2>
           <p className="mb-3 text-sm text-muted">Count the cash already in your drawer and enter it as the opening float (0 if the drawer is empty).</p>
+          {!online && <p className="mb-3 rounded-lg bg-warnsoft p-2.5 text-xs text-warn">You are offline. The shift starts on this device and is recorded online when the connection returns. (If a shift is already open for you on another device, it will be rejected then and shown in the Sync list.)</p>}
           <div className="flex items-end gap-2">
             <Field label="Opening float" className="flex-1"><Input inputMode="decimal" value={openFloat} onChange={(e) => setOpenFloat(e.target.value.replace(/[^\d.]/g, ''))} placeholder="0" /></Field>
             <Button variant="primary" loading={busy} onClick={start}>Start shift</Button>
@@ -90,7 +121,7 @@ export default function Shifts() {
       ) : (
         <Card className="mb-4">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <div><h2 className="font-semibold">Shift open <Badge tone="ok">since {fmtDateTime(current.data.opened_at)}</Badge></h2></div>
+            <div><h2 className="font-semibold">Shift open <Badge tone="ok">since {fmtDateTime(current.data.opened_at)}</Badge>{(current.data as any).local && <span className="ml-1"><Badge tone="warn">not uploaded yet</Badge></span>}</h2></div>
             <Button size="sm" onClick={() => setTick((x) => x + 1)}><RefreshCw size={14} />Refresh</Button>
           </div>
           {!s ? (summary.error ? <ErrorBox message={summary.error} onRetry={summary.reload} /> : <Spinner />) : (
@@ -115,7 +146,7 @@ export default function Shifts() {
                 <h3 className="mb-2 text-sm font-semibold">Close shift</h3>
                 {waiting > 0 && (
                   <div className="mb-3 rounded-lg bg-warnsoft p-3 text-sm text-warn">
-                    {waiting} sale(s) on this device have not uploaded yet, so the figures are incomplete. Upload them before closing.
+                    {waiting} sale(s) on this device have not uploaded yet. They are already counted in the figures here; upload them before closing so the report is complete.
                     <Button size="sm" className="mt-2" disabled={!online} onClick={async () => { await syncAll(profile?.branch_id ?? null); setTick((x) => x + 1); }}>Sync now</Button>
                   </div>
                 )}
@@ -126,7 +157,7 @@ export default function Shifts() {
                   </p>
                 )}
                 <Field label={diff ? 'Explain the difference *' : 'Note (optional)'} className="mt-3"><Textarea value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-                <Button variant="primary" size="lg" className="mt-3 w-full" loading={busy} disabled={waiting > 0 || counted === '' || (!!diff && !note.trim())} onClick={close}>Close shift</Button>
+                <Button variant="primary" size="lg" className="mt-3 w-full" loading={busy} disabled={(waiting > 0 && online) || counted === '' || (!!diff && !note.trim())} onClick={close}>Close shift</Button>
               </div>
             </div>
           )}

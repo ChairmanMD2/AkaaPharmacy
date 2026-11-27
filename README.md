@@ -27,9 +27,11 @@ These limits are enforced in the database (row-level security and checked functi
 ## How offline works
 
 * **Selling** (POS): works fully offline. Sales are saved on the device, stock is deducted locally (earliest expiry first), receipts print with a provisional number, and everything uploads automatically in order when the connection returns. Uploads are idempotent, so a retry never double-posts.
+* **Offline sales show up everywhere that matters:** they appear at the top of **Sales** (marked "Waiting to sync"), in **today's sales** on the Dashboard, and in the **Cash-up** figures. Reports show a notice that waiting sales are not yet in the totals.
 * **Pages** (dashboard, sales, orders, reports, users, wish list, expenses, receiving history, …) show the **last saved data** when offline instead of an error, and refresh by themselves the moment the connection is back.
-* **Saving without internet:** expenses, wish-list entries and edits, new suppliers and **stock receipts** are stored on the device (and stock received offline is sellable straight away), then uploaded automatically and in order.
-* **Needs a connection by nature:** creating/dispatching orders and deliveries (other people and devices are involved), refunds and voids, payment verification, cash-up open/close, Paystack, and user management. These pages still *show* saved data offline; the action buttons need the internet and say so.
+* **Saving without internet:** expenses, wish-list entries and edits, new suppliers, **stock receipts**, **order payments** (cash / transfer / POS terminal) and **opening and closing a cash-up shift** are stored on the device and uploaded automatically, in order (sales first, so a shift always closes after its sales). Stock received offline is sellable straight away.
+* **Needs a connection by nature (kept online-only on purpose):** creating, reserving and dispatching orders (stock and prices must be decided by the server, and several people work on the same order), delivery confirmation with the customer's code, refunds and voids, payment verification, Paystack, and user management. These pages still *show* saved data offline; the action buttons say they need the internet.
+* **Live updates (Supabase Realtime):** when another device changes stock, sales, orders, deliveries, the wish list, expenses or receipts, open screens refresh within a couple of seconds. If the live channel drops, the 60-second refresh and the reconnect sync still keep everything correct.
 * **Reconnecting is automatic.** The app does not rely on the browser's "online" flag alone (Wi-Fi without internet still reads as online): it checks the server itself, looks every few seconds while offline, and syncs the instant the server answers. The status pill (top right) shows Online / Offline and how many items are waiting; click it for the list and a manual **Sync now**.
 * Data is cached per signed-in user and wiped on sign-out.
 
@@ -37,7 +39,7 @@ These limits are enforced in the database (row-level security and checked functi
 
 | Module | Notes |
 |---|---|
-| Point of Sale | Barcode/keyboard-first; hold and resume sales; split payments; cash / transfer / POS-terminal (with required reference) / Paystack; 80 mm receipt. |
+| Point of Sale | Barcode scanner works from anywhere on the screen (see below); hold and resume sales; split payments; cash / transfer / POS-terminal (with required reference) / Paystack; 80 mm receipt. |
 | Inventory | Batches and expiry, adjustments, CSV/Excel bulk import with validation. |
 | **Receiving** | Receive stock from a supplier: pick or type the supplier, supplier invoice/receipt number, date of supply, date received, many products per invoice. **History** by period (date received or date of supply), by invoice number and by supplier, with totals per supplier and CSV export. Suppliers list. Duplicate supplier invoices are refused. |
 | Wish List | Unmet-demand register with insights. **Select several requests → Create invoice** (matches each to a product, shows price and stock, printable) → **Proceed to payment** at the till; paid items are marked fulfilled automatically. |
@@ -46,6 +48,16 @@ These limits are enforced in the database (row-level security and checked functi
 | Orders / Deliveries | placed → payment → pharmacist (Rx) → reserved → packed → dispatched → delivered; riders/couriers see only their jobs and confirm with the customer's one-time code. |
 | Expenses | S/No., description, unit cost, quantity, auto total; month / date-range reports, CSV, print. |
 | Reports, Users, Settings | Sales summary and admin-only profit; staff roles; business details, Paystack switch, printing help. |
+
+## Barcode scanner
+
+A USB or Bluetooth scanner is used like a keyboard: just point it at a pack. The app tells a scan from typing by speed, so it works **without clicking the search box first**, and the barcode never ends up in a text box.
+
+* **Point of Sale:** each scan adds the product to the cart (a second scan adds one more). A high beep means accepted, a low beep means no product has that barcode.
+* **Inventory:** a scan finds the product; an unknown barcode (for people allowed to add products) opens "Add product" with the barcode already filled in.
+* **Receiving:** a scan puts the product on the next empty row of the invoice.
+* **Camera scanning** (Camera button) is offered only where the browser has the built-in `BarcodeDetector` (Chrome/Edge on Android, and some desktop builds). It does not exist in every browser, so a USB scanner is the dependable way on the counter PC.
+* Scanners that drop or add a leading zero (UPC-A vs EAN-13) are matched too. If your scanner does not send Enter after each code, set it to "add Enter / CR suffix" (see its manual).
 
 ## Paystack
 
@@ -106,7 +118,7 @@ Open the site in **Chrome or Edge**, click **Install app** in the address bar, a
 | Optional `--kiosk-printing` shortcut | Documented here and in Settings. |
 | `.env` with `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Done. |
 | Vercel from GitHub, custom domain, Supabase Auth URL configuration, first admin | Done except the custom domain (pending). |
-| "Real-time sync" (Supabase) | Stock and prices refresh on every sync and about once a minute while online; push-style Realtime is not enabled. |
+| "Real-time sync" (Supabase) | Done: Supabase Realtime pushes stock, sales, orders and list changes to open screens within seconds, backed by a 60-second refresh and a sync on reconnect. |
 
 ## Known gaps / roadmap
 

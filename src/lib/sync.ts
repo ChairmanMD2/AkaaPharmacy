@@ -176,6 +176,7 @@ async function nextLocalRef(): Promise<string> {
 export interface NewSaleInput {
   branch_id: string;
   cashier_name: string;
+  cashier_id?: string;
   customer_name?: string;
   notes?: string;
   items: PendingSale['items'];
@@ -212,6 +213,7 @@ export async function saveSaleLocal(input: NewSaleInput): Promise<PendingSale> {
       sold_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
       cashier_name: input.cashier_name,
+      cashier_id: input.cashier_id,
       customer_name: input.customer_name,
       notes: input.notes,
       items: input.items,
