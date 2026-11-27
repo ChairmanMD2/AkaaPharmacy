@@ -12,6 +12,8 @@ import { useToast } from '../components/toast';
 import { ReceiptModal } from '../components/Receipt';
 import { useDebounced, useOnline } from '../lib/hooks';
 import { runOrQueue } from '../lib/outbox';
+import { beep, findByBarcode, useBarcodeScanner } from '../lib/scanner';
+import { CameraButton } from '../components/CameraScanner';
 import { getHeld, putHeld, takePrefill, type HeldCart } from '../lib/invoice';
 import { PaystackModal } from '../components/PaystackModal';
 import { uid } from '../lib/format';
@@ -102,10 +104,18 @@ export default function POS() {
     if (e.key !== 'Enter') return;
     const code = q.trim();
     if (!code) return;
-    const hit = (drugs ?? []).find((d) => d.barcode === code);
+    const hit = findByBarcode(drugs ?? [], code);
     if (hit) { add(hit); setQ(''); }
     else if (results.length === 1) { add(results[0]); setQ(''); }
   };
+
+  // A scanner works from anywhere on this screen: each scan adds the product to the cart.
+  const scanned = (code: string) => {
+    const hit = findByBarcode((drugs ?? []).filter((d) => d.is_active), code);
+    if (!hit) { beep(false); toast(`No product with barcode ${code}.`, 'error'); return; }
+    beep(true); add(hit); setQ('');
+  };
+  useBarcodeScanner(scanned, !done && !heldOpen && payIdx === null);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -183,6 +193,7 @@ export default function POS() {
       const sale = await saveSaleLocal({
         branch_id: profile!.branch_id!,
         cashier_name: profile!.full_name || 'Staff',
+        cashier_id: profile!.id,
         customer_name: customer.trim() || undefined,
         notes: invoiceCtx ? `Invoice ${invoiceCtx.no}` : undefined,
         items: cart.map((l) => ({ drug_id: l.drug.id, name: l.drug.name, quantity: l.qty, unit_price: l.price })),
@@ -217,6 +228,7 @@ export default function POS() {
       <div className="min-w-0">
         <div className="mb-3 flex items-center gap-2">
           <SearchInput inputRef={searchRef} onKeyDown={onScan} value={q} onChange={setQ} placeholder="Search name, generic or scan barcode…  (F2)" className="flex-1" />
+          <CameraButton onCode={scanned} label="Camera" />
           <span className="hidden items-center gap-1 text-xs text-muted sm:flex"><ScanBarcode size={16} />Scanner ready</span>
         </div>
         {!drugs.length ? (

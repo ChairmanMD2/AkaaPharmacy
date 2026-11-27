@@ -9,6 +9,8 @@ import { fmtDateTime, money } from '../lib/format';
 import { PAY_LABEL, type PayMethod } from '../lib/types';
 import { Badge, Button, Card, Drawer, Empty, ErrorBox, Field, Input, Modal, PageHeader, SearchInput, Select, Spinner, Table, Tabs, Td, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
+import { useWaitingSales } from '../lib/localSales';
+import type { PendingSale } from '../lib/types';
 
 type Tab = 'all' | 'review' | 'payments';
 
@@ -18,6 +20,8 @@ export default function Sales() {
   const [tab, setTab] = useState<Tab>('all');
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<any | null>(null);
+  const [localOpen, setLocalOpen] = useState<PendingSale | null>(null);
+  const waiting = useWaitingSales();
 
   const sales = useAsync(async () => {
     const { data, error } = await supabase.from('sales').select('*').order('sold_at', { ascending: false }).limit(300);
@@ -49,7 +53,13 @@ export default function Sales() {
     pending.reload(); sales.reload();
   };
 
-  const list = (sales.data ?? []).filter((s: any) => {
+  // sales made on this device that have not reached the server yet appear at the top, marked "waiting"
+  const serverIds = new Set((sales.data ?? []).map((s: any) => s.id));
+  const local = waiting.filter((w) => !serverIds.has(w.id)).map((w) => ({
+    id: w.id, receipt_no: w.receipt_no ?? w.local_ref, local_ref: w.local_ref, sold_at: w.sold_at, cashier: w.cashier_name, total: w.total,
+    status: 'completed', needs_review: false, waiting: true, local: w,
+  }));
+  const list = [...(tab === 'review' ? [] : local), ...(sales.data ?? [])].filter((s: any) => {
     if (tab === 'review' && !(s.needs_review && s.status === 'completed')) return false;
     const t = q.trim().toLowerCase();
     return !t || s.receipt_no.toLowerCase().includes(t) || (s.local_ref ?? '').toLowerCase().includes(t) || String(s.cashier).toLowerCase().includes(t);
@@ -63,14 +73,14 @@ export default function Sales() {
       {tab !== 'payments' ? (
         <Card>
           <div className="border-b border-line p-3"><SearchInput value={q} onChange={setQ} placeholder="Search receipt number or cashier…" /></div>
-          {sales.loading && !sales.data ? <Spinner /> : sales.error ? <ErrorBox message={sales.error} onRetry={sales.reload} /> : !list.length ? <Empty title="No sales to show" /> : (
+          {sales.loading && !sales.data && !local.length ? <Spinner /> : sales.error && !local.length ? <ErrorBox message={sales.error} onRetry={sales.reload} /> : !list.length ? <Empty title="No sales to show" /> : (
             <Table head={['Receipt', 'Time', 'Cashier', 'Total', 'Status', '']}>
               {list.map((s: any) => (
-                <tr key={s.id} className="cursor-pointer hover:bg-surface2" onClick={() => setOpen(s)}>
+                <tr key={s.id} className="cursor-pointer hover:bg-surface2" onClick={() => (s.waiting ? setLocalOpen(s.local) : setOpen(s))}>
                   <Td className="font-medium tnum">{s.receipt_no}{s.channel === 'online' && <span className="ml-1 text-xs text-muted">(order)</span>}</Td>
                   <Td className="text-muted">{fmtDateTime(s.sold_at)}</Td><Td>{s.cashier}</Td><Td className="tnum font-medium">{money(s.total)}</Td>
-                  <Td><div className="flex gap-1">{s.status === 'voided' ? <Badge tone="bad">Voided</Badge> : <Badge tone="ok">Completed</Badge>}{s.needs_review && s.status === 'completed' && <Badge tone="warn">Review</Badge>}</div></Td>
-                  <Td className="text-right text-xs text-brand">Details</Td>
+                  <Td><div className="flex gap-1">{s.waiting ? <Badge tone="warn">Waiting to sync</Badge> : s.status === 'voided' ? <Badge tone="bad">Voided</Badge> : <Badge tone="ok">Completed</Badge>}{s.needs_review && s.status === 'completed' && <Badge tone="warn">Review</Badge>}</div></Td>
+                  <Td className="text-right text-xs text-brand">{s.waiting ? 'Receipt' : 'Details'}</Td>
                 </tr>
               ))}
             </Table>
@@ -94,6 +104,7 @@ export default function Sales() {
           )}
         </Card>
       )}
+      {localOpen && <ReceiptModal sale={localOpen} title="Sale on this device (not uploaded yet)" onClose={() => setLocalOpen(null)} />}
       {open && <SaleDrawer sale={open} onClose={() => setOpen(null)} onChanged={() => { sales.reload(); pending.reload(); }} />}
     </>
   );

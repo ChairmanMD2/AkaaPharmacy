@@ -10,6 +10,7 @@ import { PAY_LABEL, type Drug, type PayMethod, type Role } from '../lib/types';
 import { Badge, Button, Card, Confirm, Drawer, Empty, ErrorBox, Field, Input, Modal, PageHeader, SearchInput, Select, Spinner, Table, Td, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
 import { PaystackModal } from '../components/PaystackModal';
+import { runOrQueue } from '../lib/outbox';
 
 export const ORDER_STATUS: Record<string, { label: string; tone: 'neutral' | 'ok' | 'warn' | 'bad' | 'info' | 'brand' }> = {
   placed: { label: 'Placed', tone: 'info' },
@@ -260,7 +261,7 @@ function OrderDrawer({ id, onClose, onChanged }: { id: string; onClose: () => vo
         ))}
       </ol>
 
-      {modal === 'pay' && <PayModal order={o} onClose={() => setModal(null)} act={act} />}
+      {modal === 'pay' && <PayModal order={o} onClose={() => setModal(null)} onSaved={() => { d.reload(); onChanged(); }} act={act} />}
       {modal === 'dispatch' && <DispatchModal order={o} onClose={() => setModal(null)} act={act} />}
       {modal === 'pickup' && <Confirm title="Customer collected?" confirmLabel="Hand over" onClose={() => setModal(null)} onConfirm={() => act(() => rpc('order_complete_pickup', { p_order: o.id, p_collected_by: text }), 'Order handed over.')}><Field label="Collected by (name)"><Input value={text} onChange={(e) => setText(e.target.value)} autoFocus /></Field></Confirm>}
       {modal === 'cancel' && <Confirm title="Cancel this order?" danger confirmLabel="Cancel order" onClose={() => setModal(null)} onConfirm={() => act(() => rpc('order_cancel', { p_order: o.id, p_reason: text }), 'Order cancelled.')} message="Reserved stock is released. If the customer already paid, the order is flagged for refund."><Field label="Reason *"><Textarea value={text} onChange={(e) => setText(e.target.value)} /></Field></Confirm>}
@@ -289,20 +290,33 @@ function DeliveryBox({ job, staff }: { job: any; staff: boolean }) {
   );
 }
 
-function PayModal({ order, onClose, act }: { order: any; onClose: () => void; act: (fn: () => PromiseLike<any>, ok: string) => Promise<boolean> }) {
+function PayModal({ order, onClose, onSaved, act }: { order: any; onClose: () => void; onSaved?: () => void; act: (fn: () => PromiseLike<any>, ok: string) => Promise<boolean> }) {
   const [method, setMethod] = useState<PayMethod>('transfer');
   const [amount, setAmount] = useState(String(order.total));
   const [ref, setRef] = useState('');
   const [collecting, setCollecting] = useState(false);
+  const toast = useToast();
   const settings = useLiveQuery(async () => (await db.meta.get('settings'))?.value ?? {}, [], {} as Record<string, any>);
   const paystackOn = settings.paystack_enabled === true || settings.paystack_enabled === 'true';
   const methods: PayMethod[] = paystackOn ? ['paystack', 'transfer', 'pos_terminal', 'cash', 'card'] : ['transfer', 'pos_terminal', 'cash', 'card'];
   const needsPaystack = method === 'paystack' && !ref;
+  // Cash / transfer / POS payments are saved on this device when offline and recorded on the order as soon as the connection returns.
+  const save = async () => {
+    const amt = Number(amount);
+    if (!(amt > 0)) return toast('Enter the amount.', 'error');
+    if ((method === 'transfer' || method === 'pos_terminal') && !ref.trim()) return toast('A payment reference is required.', 'error');
+    if (method === 'paystack') { await act(() => supabase.rpc('add_order_payment', { p_order: order.id, p_method: method, p_amount: amt, p_reference: ref || null }), 'Payment recorded.'); return; }
+    const r = await runOrQueue('order.payment', { order_id: order.id, method, amount: amt, reference: ref.trim() || null, client_id: uid() }, `Payment ${money(amt)} for ${order.order_no}`);
+    if (r.error) return toast(r.error, 'error');
+    toast(r.queued ? 'Saved on this device. It will be recorded on the order when you are back online.' : 'Payment recorded.');
+    onClose();
+    onSaved?.();
+  };
   return (
     <Modal title="Record payment" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button>
       {needsPaystack
         ? <Button variant="primary" disabled={!(Number(amount) > 0)} onClick={() => setCollecting(true)}>Collect {money(Number(amount) || 0)} with Paystack</Button>
-        : <Button variant="primary" onClick={() => act(() => supabase.rpc('add_order_payment', { p_order: order.id, p_method: method, p_amount: Number(amount), p_reference: ref || null }), 'Payment recorded.')}>Save</Button>}</>}>
+        : <Button variant="primary" onClick={save}>Save</Button>}</>}>
       <div className="grid gap-3">
         {collecting && <PaystackModal amount={Number(amount) || 0} purpose="order" orderId={order.id} onClose={() => setCollecting(false)} onSuccess={(reference) => { setRef(reference); setCollecting(false); }} />}
         {method === 'paystack' && ref && <p className="rounded-lg bg-oksoft p-2.5 text-sm text-ok">Paystack payment confirmed ({ref}). Press Save to attach it to this order.</p>}

@@ -10,6 +10,7 @@ import { availableFromBatches } from '../lib/sync';
 import { daysUntil, fmtDate, money, num } from '../lib/format';
 import { Badge, Card, PageHeader, Stat } from '../components/ui';
 import { can } from '../lib/permissions';
+import { isToday, useWaitingSales } from '../lib/localSales';
 
 async function count(table: string, f: (q: any) => any) {
   const { count: c, error } = await f(supabase.from(table).select('id', { count: 'exact', head: true }));
@@ -21,12 +22,13 @@ export default function Dashboard() {
   const { profile } = useAuth();
   const drugs = useLiveQuery(() => db.drugs.toArray(), [], []);
   const batches = useLiveQuery(() => db.batches.toArray(), [], []);
-  const waiting = useLiveQuery(() => db.pending_sales.where('status').anyOf('pending', 'syncing', 'error').count(), [], 0);
+  const waitingSales = useWaitingSales();
+  const waiting = waitingSales.length;
 
   const online = useAsync(async () => {
     const start = new Date(); start.setHours(0, 0, 0, 0);
     const [sales, pendingPay, review, orders, wish] = await Promise.all([
-      supabase.from('sales').select('total').eq('status', 'completed').gte('sold_at', start.toISOString()),
+      supabase.from('sales').select('id,total').eq('status', 'completed').gte('sold_at', start.toISOString()),
       count('payments', (q) => q.eq('status', 'pending_verification')),
       count('sales', (q) => q.eq('needs_review', true).eq('status', 'completed')),
       count('orders', (q) => q.not('status', 'in', '(delivered,cancelled,returned)')),
@@ -34,7 +36,7 @@ export default function Dashboard() {
     ]);
     if (sales.error) throw sales.error;
     const rows = sales.data ?? [];
-    return { todayTotal: rows.reduce((s: number, r: any) => s + Number(r.total), 0), todayCount: rows.length, pendingPay, review, orders, wish };
+    return { ids: new Set(rows.map((r: any) => r.id as string)), todayTotal: rows.reduce((s: number, r: any) => s + Number(r.total), 0), todayCount: rows.length, pendingPay, review, orders, wish };
   }, [], { cacheKey: 'dashboard.online' });
 
   const stock = useMemo(() => {
@@ -53,11 +55,12 @@ export default function Dashboard() {
   }, [drugs, batches]);
 
   const o = online.data;
+  const localToday = waitingSales.filter((w) => isToday(w.sold_at) && !o?.ids?.has(w.id));
   return (
     <>
       <PageHeader title={`Hello, ${profile?.full_name?.split(' ')[0] || 'there'}`} subtitle="Here is what needs attention today." />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat icon={TrendingUp} label="Today's sales" value={o ? money(o.todayTotal) : '—'} hint={o ? `${o.todayCount} sale(s)` : online.loading ? 'loading…' : 'needs connection'} />
+        <Stat icon={TrendingUp} label="Today's sales" value={o || localToday.length ? money((o?.todayTotal ?? 0) + localToday.reduce((s, w) => s + w.total, 0)) : '—'} hint={o ? `${o.todayCount + localToday.length} sale(s)${localToday.length ? ` · ${localToday.length} not uploaded yet` : ''}` : localToday.length ? `${localToday.length} sale(s) on this device · server figures unavailable` : online.loading ? 'loading…' : 'needs connection'} />
         <Stat icon={CloudUpload} label="Waiting to upload" value={num(waiting)} tone={waiting ? 'warn' : undefined} hint="sales on this device" />
         <Stat icon={BadgeCheck} label="Payments to verify" value={o ? num(o.pendingPay) : '—'} tone={o && o.pendingPay ? 'warn' : undefined} hint="transfers / POS / COD" />
         <Stat icon={AlertTriangle} label="Sales needing review" value={o ? num(o.review) : '—'} tone={o && o.review ? 'bad' : undefined} />

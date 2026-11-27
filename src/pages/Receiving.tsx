@@ -13,6 +13,8 @@ import type { Drug } from '../lib/types';
 import { Badge, Button, Card, Drawer, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Stat, Table, Tabs, Td, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
 import { ProductSelect } from '../components/ProductSelect';
+import { beep, findByBarcode, useBarcodeScanner } from '../lib/scanner';
+import { CameraButton } from '../components/CameraScanner';
 
 type Tab = 'new' | 'history' | 'suppliers';
 interface Supplier { id: string; name: string; contact_person?: string | null; phone?: string | null; email?: string | null; address?: string | null; is_active: boolean }
@@ -61,6 +63,18 @@ function NewReceipt({ onSaved }: { onSaved: () => void }) {
   const list = suppliers.data ?? [];
   const match = list.find((s) => s.name.toLowerCase() === supplierText.trim().toLowerCase());
   const total = lines.reduce((s, l) => s + (parseInt(l.qty, 10) || 0) * (Number(l.cost) || 0), 0);
+  // Scan a pack to put its product on the invoice (fills the first empty row, otherwise adds a row).
+  const scanned = (code: string) => {
+    const hit = findByBarcode(drugs.filter((d) => d.is_active), code);
+    if (!hit) { beep(false); toast(`No product with barcode ${code}. Add it in Inventory first.`, 'error'); return; }
+    beep(true);
+    setLines((a) => {
+      if (a.some((l) => l.drug?.id === hit.id)) { toast(`${hit.name} is already on this invoice.`, 'info'); return a; }
+      const i = a.findIndex((l) => !l.drug);
+      return i >= 0 ? a.map((l, k) => (k === i ? { ...l, drug: hit } : l)) : [...a, { ...blankLine(), drug: hit }];
+    });
+  };
+  useBarcodeScanner(scanned);
   const setLine = (key: string, patch: Partial<Line>) => setLines((a) => a.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
   const validate = (): string | null => {
@@ -137,7 +151,7 @@ function NewReceipt({ onSaved }: { onSaved: () => void }) {
             ))}
           </tbody>
         </table>
-        <Button className="mt-2" onClick={() => setLines((a) => [...a, blankLine()])}><Plus size={16} />Add product</Button>
+        <div className="mt-2 flex flex-wrap items-center gap-2"><Button onClick={() => setLines((a) => [...a, blankLine()])}><Plus size={16} />Add product</Button><CameraButton onCode={scanned} label="Scan with camera" /><span className="text-xs text-muted">A barcode scanner adds the product by itself.</span></div>
         {!drugs.length && <p className="mt-2 text-xs text-warn">No products on this device yet. Connect once to download the catalogue, or add products in Inventory first.</p>}
       </div>
       <div className="flex flex-wrap items-end justify-between gap-3 border-t border-line px-4 py-3">

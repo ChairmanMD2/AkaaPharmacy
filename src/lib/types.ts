@@ -44,6 +44,7 @@ export interface PendingSale {
   sold_at: string;
   created_at: string;
   cashier_name: string;
+  cashier_id?: string;
   customer_name?: string;
   notes?: string;
   items: { drug_id: string; name: string; quantity: number; unit_price: number }[];

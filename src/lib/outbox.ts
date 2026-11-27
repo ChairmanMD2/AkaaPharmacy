@@ -25,6 +25,12 @@ export const handlers: Record<OpType, Handler> = {
   },
   'supplier.add': async (p) => { const { error } = await supabase.from('suppliers').insert(p.row); asOk(error); },
   'receipt.create': async (p) => { const { error } = await supabase.rpc('receive_stock_invoice', { p_receipt: p.receipt }); if (error) throw error; },
+  'order.payment': async (p) => {
+    const { error } = await supabase.rpc('add_order_payment', { p_order: p.order_id, p_method: p.method, p_amount: p.amount, p_reference: p.reference ?? null, p_client_id: p.client_id });
+    if (error) throw error;
+  },
+  'shift.open': async (p) => { const { error } = await supabase.rpc('open_shift', { p_float: p.float, p_id: p.id, p_opened_at: p.opened_at }); if (error) throw error; },
+  'shift.close': async (p) => { const { error } = await supabase.rpc('close_shift', { p_shift: p.id, p_counted: p.counted, p_note: p.note ?? null, p_closed_at: p.closed_at }); if (error) throw error; },
 };
 
 export async function enqueue(type: OpType, payload: any, label: string): Promise<OutboxOp> {

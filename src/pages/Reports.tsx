@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Download } from 'lucide-react';
+import { useWaitingSales } from '../lib/localSales';
 import { supabase, fetchAll } from '../lib/supabase';
 import { useAsync } from '../lib/hooks';
 import { downloadCSV, fmtDate, money, num, todayISO } from '../lib/format';
@@ -9,6 +10,7 @@ import { useAuth } from '../lib/auth';
 
 export default function Reports() {
   const { profile } = useAuth();
+  const waitingN = useWaitingSales().length;
   const [from, setFrom] = useState(todayISO().slice(0, 8) + '01');
   const [to, setTo] = useState(todayISO());
 
@@ -47,6 +49,7 @@ export default function Reports() {
 
   return (
     <>
+      {waitingN > 0 && <p className="mb-3 rounded-lg bg-warnsoft p-2.5 text-sm text-warn">{waitingN} sale(s) made on this device have not been uploaded yet, so they are not in these figures. They will be included automatically once they upload.</p>}
       <PageHeader title="Reports" subtitle="Sales summary for a period" actions={<Button onClick={exportCSV} disabled={!d}><Download size={16} />Export CSV</Button>} />
       <Card className="mb-4 flex flex-wrap items-end gap-3 p-4">
         <Field label="From"><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>

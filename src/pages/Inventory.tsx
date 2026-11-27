@@ -11,6 +11,8 @@ import { can } from '../lib/permissions';
 import { availableFromBatches, pullCatalog } from '../lib/sync';
 import { daysUntil, downloadCSV, fmtDate, money, num, todayISO } from '../lib/format';
 import type { Batch, Drug } from '../lib/types';
+import { beep, findByBarcode, useBarcodeScanner } from '../lib/scanner';
+import { CameraButton } from '../components/CameraScanner';
 import { Badge, Button, Card, Drawer, Empty, Field, Input, Modal, PageHeader, SearchInput, Select, Spinner, Table, Td, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
 import { useOnline } from '../lib/hooks';
@@ -56,6 +58,15 @@ export default function Inventory() {
     });
   }, [rows, q, filter]);
 
+  // Scanner: finds the product on this screen; an unknown barcode can start a new product with the code filled in.
+  useBarcodeScanner((code) => {
+    const hit = findByBarcode(drugs ?? [], code);
+    if (hit) { beep(true); setFilter('all'); setQ(hit.name); return; }
+    beep(false);
+    if (write && online) { toast(`Barcode ${code} is new. Fill in the product details.`, 'info'); setEdit({ unit_type: 'Pack', reorder_level: 10, is_active: true, barcode: code }); }
+    else toast(`No product with barcode ${code}.`, 'error');
+  }, !edit && !batchesOf && !importing);
+
   if (!drugs || !batches) return <Spinner />;
   const needOnline = () => { if (!online) { toast('This action needs an internet connection.', 'info'); return true; } return false; };
 
@@ -69,7 +80,8 @@ export default function Inventory() {
         </>} />
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
-          <SearchInput value={q} onChange={setQ} placeholder="Search products…" className="min-w-52 flex-1" />
+          <SearchInput value={q} onChange={setQ} placeholder="Search products or scan a barcode…" className="min-w-52 flex-1" />
+          <CameraButton onCode={(c) => { const hit = findByBarcode(drugs ?? [], c); if (hit) setQ(hit.name); else toast(`No product with barcode ${c}.`, 'error'); }} label="Camera" />
           <Select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} className="w-44" aria-label="Filter">
             <option value="all">All products</option><option value="low">Low stock</option><option value="out">Out of stock</option>
             <option value="expiring">Expiring ≤ 90 days</option><option value="expired">Expired stock</option>
@@ -153,7 +165,7 @@ function DrugModal({ drug, onClose, onSaved }: { drug: Partial<Drug>; onClose: (
         <Field label="Generic name"><Input value={f.generic_name} onChange={(e) => set('generic_name', e.target.value)} /></Field>
         <Field label="Category"><Input value={f.category} onChange={(e) => set('category', e.target.value)} placeholder="Antibiotics" /></Field>
         <Field label="NAFDAC number"><Input value={f.nafdac_number} onChange={(e) => set('nafdac_number', e.target.value)} /></Field>
-        <Field label="Barcode" hint="Click here and scan the pack."><Input value={f.barcode} onChange={(e) => set('barcode', e.target.value)} /></Field>
+        <Field label="Barcode" hint="Click here and scan the pack."><Input data-scan-ignore value={f.barcode} onChange={(e) => set('barcode', e.target.value)} /></Field>
         <Field label="Unit type"><Input value={f.unit_type} onChange={(e) => set('unit_type', e.target.value)} placeholder="Card / Pack / Bottle" /></Field>
         <Field label="Reorder level"><Input inputMode="numeric" value={f.reorder_level} onChange={(e) => set('reorder_level', e.target.value)} /></Field>
         <Field label="Selling price *"><Input inputMode="decimal" value={f.selling_price} onChange={(e) => set('selling_price', e.target.value)} /></Field>
