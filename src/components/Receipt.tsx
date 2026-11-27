@@ -8,7 +8,7 @@ import { fmtDateTime, money } from '../lib/format';
 import { Button, Modal } from './ui';
 
 /** 80mm thermal receipt. Placeholder layout until the client supplies their receipt model. */
-export function ReceiptBody({ sale, settings }: { sale: PendingSale; settings: Record<string, any> }) {
+export function ReceiptBody({ sale, settings, branch }: { sale: PendingSale; settings: Record<string, any>; branch?: string }) {
   const change = Math.max(0, sale.payments.reduce((s, p) => s + p.amount, 0) - sale.total);
   return (
     <div className="receipt">
@@ -20,6 +20,7 @@ export function ReceiptBody({ sale, settings }: { sale: PendingSale; settings: R
       <hr style={{ margin: '6px 0', borderTop: '1px dashed #000' }} />
       <div>Receipt: {sale.receipt_no ?? sale.local_ref}</div>
       <div>Date: {fmtDateTime(sale.sold_at)}</div>
+      {branch && <div>Branch: {branch}</div>}
       <div>Cashier: {sale.cashier_name}</div>
       {sale.customer_name && <div>Customer: {sale.customer_name}</div>}
       <hr style={{ margin: '6px 0', borderTop: '1px dashed #000' }} />
@@ -47,6 +48,7 @@ const Line = ({ a, b, bold }: { a: string; b: string; bold?: boolean }) => (
 
 export function ReceiptModal({ sale, onClose, title = 'Sale complete' }: { sale: PendingSale; onClose: () => void; title?: string }) {
   const settings = useLiveQuery(async () => (await db.meta.get('settings'))?.value ?? {}, [], {} as Record<string, any>);
+  const branch = useLiveQuery(() => db.branches.get(sale.branch_id), [sale.branch_id], undefined)?.name;
   return (
     <>
       <Modal title={title} onClose={onClose} footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" onClick={() => window.print()}><Printer size={16} />Print receipt</Button></>}>
@@ -58,9 +60,9 @@ export function ReceiptModal({ sale, onClose, title = 'Sale complete' }: { sale:
             </svg>
           </div>
         )}
-        <div className="mx-auto w-fit rounded-lg border border-line bg-white shadow-card"><ReceiptBody sale={sale} settings={settings} /></div>
+        <div className="mx-auto w-fit rounded-lg border border-line bg-white shadow-card"><ReceiptBody sale={sale} settings={settings} branch={branch} /></div>
       </Modal>
-      {createPortal(<div className="receipt-print"><ReceiptBody sale={sale} settings={settings} /></div>, document.body)}
+      {createPortal(<div className="receipt-print"><ReceiptBody sale={sale} settings={settings} branch={branch} /></div>, document.body)}
     </>
   );
 }

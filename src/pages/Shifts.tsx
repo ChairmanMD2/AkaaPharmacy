@@ -27,13 +27,13 @@ export default function Shifts() {
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<any | null>(null);
   const [tick, setTick] = useState(0);
-  const waiting = useLiveQuery(() => db.pending.where('status').anyOf('pending', 'syncing', 'error').count(), [], 0);
+  const waiting = useLiveQuery(() => db.pending_sales.where('status').anyOf('pending', 'syncing', 'error').count(), [], 0);
 
   const current = useAsync(async () => {
     const { data, error } = await supabase.from('shifts').select('*').eq('cashier_id', profile!.id).eq('status', 'open').maybeSingle();
     if (error) throw error;
     return data as any | null;
-  }, [profile?.id]);
+  }, [profile?.id], { cacheKey: 'shifts.current' });
 
   const summary = useAsync(async () => {
     if (!current.data) return null;
@@ -51,7 +51,7 @@ export default function Shifts() {
     const { data: ps } = ids.length ? await supabase.from('profiles').select('id,full_name').in('id', ids) : { data: [] as any[] };
     const names = new Map((ps ?? []).map((p: any) => [p.id, p.full_name]));
     return (data ?? []).map((s: any) => ({ ...s, cashier: names.get(s.cashier_id) ?? '—' }));
-  }, [current.data?.id]);
+  }, [current.data?.id], { cacheKey: 'shifts.history' });
 
   const start = async () => {
     setBusy(true);
@@ -93,7 +93,7 @@ export default function Shifts() {
             <div><h2 className="font-semibold">Shift open <Badge tone="ok">since {fmtDateTime(current.data.opened_at)}</Badge></h2></div>
             <Button size="sm" onClick={() => setTick((x) => x + 1)}><RefreshCw size={14} />Refresh</Button>
           </div>
-          {!s ? <Spinner /> : (
+          {!s ? (summary.error ? <ErrorBox message={summary.error} onRetry={summary.reload} /> : <Spinner />) : (
             <div className="grid gap-6 p-4 lg:grid-cols-2">
               <div>
                 <h3 className="mb-2 text-sm font-semibold">Expected cash in the drawer</h3>

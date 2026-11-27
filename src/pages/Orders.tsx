@@ -9,6 +9,7 @@ import { fmtDateTime, money, uid } from '../lib/format';
 import { PAY_LABEL, type Drug, type PayMethod, type Role } from '../lib/types';
 import { Badge, Button, Card, Confirm, Drawer, Empty, ErrorBox, Field, Input, Modal, PageHeader, SearchInput, Select, Spinner, Table, Td, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
+import { PaystackModal } from '../components/PaystackModal';
 
 export const ORDER_STATUS: Record<string, { label: string; tone: 'neutral' | 'ok' | 'warn' | 'bad' | 'info' | 'brand' }> = {
   placed: { label: 'Placed', tone: 'info' },
@@ -37,7 +38,7 @@ export default function Orders() {
     const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(300);
     if (error) throw error;
     return data as any[];
-  }, []);
+  }, [], { cacheKey: 'orders.list' });
 
   const list = useMemo(() => (orders.data ?? []).filter((o) => {
     if (filter === 'open' && ['delivered', 'cancelled', 'returned'].includes(o.status)) return false;
@@ -161,7 +162,7 @@ function OrderDrawer({ id, onClose, onChanged }: { id: string; onClose: () => vo
     const actorIds = Array.from(new Set((o.order_events ?? []).map((e: any) => e.actor).filter(Boolean)));
     const { data: names } = actorIds.length ? await supabase.from('profiles').select('id,full_name').in('id', actorIds as string[]) : { data: [] as any[] };
     return { o: o as any, pays: (pays ?? []) as any[], names: new Map((names ?? []).map((n: any) => [n.id, n.full_name])) };
-  }, [id]);
+  }, [id], { cacheKey: `orders.detail.${id}` });
 
   const act = async (fn: () => PromiseLike<{ error: any; data?: any }>, ok: string) => {
     const { error } = await fn();
@@ -292,10 +293,20 @@ function PayModal({ order, onClose, act }: { order: any; onClose: () => void; ac
   const [method, setMethod] = useState<PayMethod>('transfer');
   const [amount, setAmount] = useState(String(order.total));
   const [ref, setRef] = useState('');
+  const [collecting, setCollecting] = useState(false);
+  const settings = useLiveQuery(async () => (await db.meta.get('settings'))?.value ?? {}, [], {} as Record<string, any>);
+  const paystackOn = settings.paystack_enabled === true || settings.paystack_enabled === 'true';
+  const methods: PayMethod[] = paystackOn ? ['paystack', 'transfer', 'pos_terminal', 'cash', 'card'] : ['transfer', 'pos_terminal', 'cash', 'card'];
+  const needsPaystack = method === 'paystack' && !ref;
   return (
-    <Modal title="Record payment" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => act(() => supabase.rpc('add_order_payment', { p_order: order.id, p_method: method, p_amount: Number(amount), p_reference: ref || null }), 'Payment recorded.')}>Save</Button></>}>
+    <Modal title="Record payment" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button>
+      {needsPaystack
+        ? <Button variant="primary" disabled={!(Number(amount) > 0)} onClick={() => setCollecting(true)}>Collect {money(Number(amount) || 0)} with Paystack</Button>
+        : <Button variant="primary" onClick={() => act(() => supabase.rpc('add_order_payment', { p_order: order.id, p_method: method, p_amount: Number(amount), p_reference: ref || null }), 'Payment recorded.')}>Save</Button>}</>}>
       <div className="grid gap-3">
-        <Field label="Method"><Select value={method} onChange={(e) => setMethod(e.target.value as PayMethod)}>{(['transfer', 'pos_terminal', 'cash', 'card'] as PayMethod[]).map((m) => <option key={m} value={m}>{PAY_LABEL[m]}</option>)}</Select></Field>
+        {collecting && <PaystackModal amount={Number(amount) || 0} purpose="order" orderId={order.id} onClose={() => setCollecting(false)} onSuccess={(reference) => { setRef(reference); setCollecting(false); }} />}
+        {method === 'paystack' && ref && <p className="rounded-lg bg-oksoft p-2.5 text-sm text-ok">Paystack payment confirmed ({ref}). Press Save to attach it to this order.</p>}
+        <Field label="Method"><Select value={method} onChange={(e) => { setMethod(e.target.value as PayMethod); setRef(''); }}>{methods.map((m) => <option key={m} value={m}>{PAY_LABEL[m]}</option>)}</Select></Field>
         <Field label="Amount"><Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))} /></Field>
         {(method === 'transfer' || method === 'pos_terminal') && <Field label={method === 'transfer' ? 'Transfer ID / reference *' : 'POS approval code *'} hint="Each reference can be used once."><Input value={ref} onChange={(e) => setRef(e.target.value)} /></Field>}
         <p className="text-xs text-muted">Transfers and POS payments stay "to verify" until matched to the bank statement. Cash is verified immediately.</p>
@@ -309,7 +320,7 @@ function DispatchModal({ order, onClose, act }: { order: any; onClose: () => voi
     const { data, error } = await supabase.from('profiles').select('id,full_name,role').in('role', ['rider', 'courier']).eq('is_active', true).order('full_name');
     if (error) throw error;
     return data as any[];
-  }, []);
+  }, [], { cacheKey: 'orders.riders' });
   const [assignee, setAssignee] = useState('');
   const [provider, setProvider] = useState('own_rider');
   return (

@@ -126,3 +126,22 @@ describe('format helpers', () => {
     expect(monthRange('2027-02')).toEqual(['2027-02-01', '2027-02-28']);
   });
 });
+
+import { applyReceiptToBatches } from './receiptLocal';
+describe('stock received offline is sellable straight away', () => {
+  const base: Batch[] = [batch('b1', '2027-06-01', 10)];
+  const r = (items: any[]) => ({ id: 'rcpt1', branch_id: 'b', items });
+  it('adds to an existing batch with the same number (case-insensitive)', () => {
+    const out = applyReceiptToBatches(base, r([{ drug_id: 'd1', batch_number: 'B1', expiry_date: '2027-06-01', quantity: 5 }]));
+    expect(out).toHaveLength(1); expect(out[0].quantity_remaining).toBe(15);
+  });
+  it('creates a temporary batch for a new batch number, and leaves the input untouched', () => {
+    const out = applyReceiptToBatches(base, r([{ drug_id: 'd1', batch_number: 'NEW', expiry_date: '2028-01-01', quantity: 7 }]));
+    expect(out).toHaveLength(2); expect(out[1].id).toBe('local:rcpt1:0'); expect(out[1].quantity_remaining).toBe(7);
+    expect(base[0].quantity_remaining).toBe(10); expect(base).toHaveLength(1);
+  });
+  it('then sells earliest-expiry first, including the new stock', () => {
+    const out = applyReceiptToBatches(base, r([{ drug_id: 'd1', batch_number: 'NEW', expiry_date: '2026-12-15', quantity: 4 }]));
+    expect(allocateFEFO(out, 'd1', 6)).toEqual([{ batch_id: 'local:rcpt1:0', qty: 4 }, { batch_id: 'b1', qty: 2 }]);
+  });
+});

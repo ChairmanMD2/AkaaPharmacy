@@ -3,14 +3,15 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   BarChart3, CloudOff, Cloud, Command, LayoutDashboard, ListPlus, LogOut, Menu, Moon, Package, Receipt, RefreshCw,
-  Settings as Cog, ShoppingCart, Sun, Truck, Users, Wallet, ClipboardList, X, AlertTriangle, KeyRound, Coins,
+  Settings as Cog, ShoppingCart, Sun, Truck, Users, Wallet, ClipboardList, X, AlertTriangle, KeyRound, Coins, PackagePlus,
 } from 'lucide-react';
 import { PasswordForm } from './PasswordForm';
 import { useAuth } from '../lib/auth';
 import { can, type Feature } from '../lib/permissions';
 import { ROLE_LABEL } from '../lib/types';
 import { db } from '../lib/db';
-import { getSyncState, retrySale, subscribeSync, syncAll } from '../lib/sync';
+import { getSyncState, retrySale, setSyncBranch, subscribeSync, syncAll } from '../lib/sync';
+import { discardOp, retryOp } from '../lib/outbox';
 import { useOnline } from '../lib/hooks';
 import { cx, Badge, Button, Drawer, Modal } from './ui';
 import { fmtDateTime, money } from '../lib/format';
@@ -21,6 +22,7 @@ const NAV: NavDef[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, feature: 'dashboard' },
   { to: '/pos', label: 'Point of Sale', icon: ShoppingCart, feature: 'pos' },
   { to: '/inventory', label: 'Inventory', icon: Package, feature: 'inventory' },
+  { to: '/receiving', label: 'Receiving', icon: PackagePlus, feature: 'receiving' },
   { to: '/sales', label: 'Sales', icon: Receipt, feature: 'sales' },
   { to: '/orders', label: 'Orders', icon: ClipboardList, feature: 'orders' },
   { to: '/deliveries', label: 'Deliveries', icon: Truck, feature: 'deliveries' },
@@ -48,15 +50,19 @@ function useSync() {
 function SyncPill({ onOpen }: { onOpen: () => void }) {
   const online = useOnline();
   const sync = useSync();
-  const waiting = useLiveQuery(() => db.pending.where('status').anyOf('pending', 'syncing').count(), [], 0);
-  const errors = useLiveQuery(() => db.pending.where('status').equals('error').count(), [], 0);
+  const waiting = useLiveQuery(() => db.pending_sales.where('status').anyOf('pending', 'syncing').count(), [], 0);
+  const errorSales = useLiveQuery(() => db.pending_sales.where('status').equals('error').count(), [], 0);
+  const queued = useLiveQuery(() => db.outbox.count(), [], 0);
+  const errorOps = useLiveQuery(() => db.outbox.where('status').equals('error').count(), [], 0);
+  const errors = errorSales + errorOps;
+  const waitingAll = waiting + queued - errorOps;
   return (
     <button onClick={onOpen} className={cx('flex h-9 items-center gap-2 rounded-full border px-3 text-xs font-medium transition', sync.syncing && 'animate-pulse',
       !online ? 'border-transparent bg-warnsoft text-warn' : errors ? 'border-transparent bg-badsoft text-bad' : 'border-line bg-surface text-muted hover:text-fg')}
       title="Sync status">
       {sync.syncing ? <RefreshCw size={14} className="animate-spin" /> : online ? <Cloud size={14} /> : <CloudOff size={14} />}
       <span>{!online ? 'Offline' : sync.syncing ? 'Syncing…' : 'Online'}</span>
-      {(waiting > 0 || errors > 0) && <span className="rounded-full bg-brand px-1.5 text-[11px] text-brandfg">{waiting + errors}</span>}
+      {(waitingAll > 0 || errors > 0) && <span className="rounded-full bg-brand px-1.5 text-[11px] text-brandfg">{waitingAll + errors}</span>}
     </button>
   );
 }
@@ -66,7 +72,8 @@ function SyncDrawer({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const online = useOnline();
   const sync = useSync();
-  const list = useLiveQuery(() => db.pending.orderBy('created_at').reverse().limit(60).toArray(), [], []);
+  const list = useLiveQuery(() => db.pending_sales.orderBy('created_at').reverse().limit(60).toArray(), [], []);
+  const ops = useLiveQuery(() => db.outbox.orderBy('created_at').toArray(), [], []);
   const catalogAt = useLiveQuery(() => db.meta.get('catalog_at'), [], undefined);
   const run = async () => {
     const r = await syncAll(profile?.branch_id ?? null);
@@ -80,6 +87,24 @@ function SyncDrawer({ onClose }: { onClose: () => void }) {
         <p><b>{online ? 'Connected' : 'Offline'}</b>. Sales are saved on this device first and uploaded automatically when the internet returns.</p>
         <p className="mt-1 text-xs text-muted">Stock last refreshed: {catalogAt?.value ? fmtDateTime(catalogAt.value) : 'never'}{sync.lastError ? ` · Last error: ${sync.lastError}` : ''}</p>
       </div>
+      {ops.length > 0 && (
+        <>
+          <h3 className="mb-1 text-sm font-semibold">Other entries waiting to upload</h3>
+          <ul className="mb-4 divide-y divide-line rounded-lg border border-line">
+            {ops.map((o) => (
+              <li key={o.id} className="flex items-start justify-between gap-3 px-3 py-2.5">
+                <div className="min-w-0"><p className="text-sm font-medium">{o.label}</p><p className="text-xs text-muted">{fmtDateTime(o.created_at)}</p>
+                  {o.error && <p className="mt-1 flex items-start gap-1 text-xs text-bad"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{o.error}</p>}</div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Badge tone={o.status === 'error' ? 'bad' : 'warn'}>{o.status === 'error' ? 'Needs attention' : 'Waiting'}</Badge>
+                  {o.status === 'error' && <div className="flex gap-1"><Button size="sm" onClick={async () => { await retryOp(o.id); run(); }}>Retry</Button><Button size="sm" onClick={() => discardOp(o.id)}>Discard</Button></div>}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <h3 className="mb-1 text-sm font-semibold">Sales</h3>
+        </>
+      )}
       {!list.length && <p className="py-6 text-center text-sm text-muted">No sales recorded on this device yet.</p>}
       <ul className="divide-y divide-line">
         {list.map((s) => (
@@ -152,6 +177,7 @@ export default function Layout() {
   // Auto-sync: at start, when the connection returns, and every minute while online.
   useEffect(() => {
     const branch = profile?.branch_id ?? null;
+    setSyncBranch(branch);
     const go = () => { if (navigator.onLine) syncAll(branch); };
     go();
     window.addEventListener('online', go);
@@ -223,7 +249,7 @@ export default function Layout() {
         </header>
         {(offlineMode || !online) && (
           <div className="no-print bg-warnsoft px-4 py-1.5 text-center text-xs font-medium text-warn">
-            {offlineMode ? 'Offline mode: signed in with the last known account. Sales are saved on this device and sync later.' : 'You are offline. Selling continues normally; everything uploads when the connection returns.'}
+            {offlineMode ? 'Offline mode: signed in with the last known account. Sales are saved on this device and sync later.' : 'You are offline. Pages show the last saved data. Sales, expenses, wish-list entries and stock receipts you enter are saved on this device and upload by themselves when the connection returns.'}
           </div>
         )}
         <main className="flex-1 overflow-y-auto p-3 sm:p-5"><div key={loc.pathname} className="route-enter mx-auto max-w-7xl"><Outlet /></div></main>

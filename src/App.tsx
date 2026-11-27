@@ -8,9 +8,11 @@ import SetPassword from './pages/SetPassword';
 import { Button, Card, Spinner } from './components/ui';
 import { can, isCourier, type Feature } from './lib/permissions';
 
+const PaystackReturn = lazy(() => import('./pages/PaystackReturn'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const POS = lazy(() => import('./pages/POS'));
 const Inventory = lazy(() => import('./pages/Inventory'));
+const Receiving = lazy(() => import('./pages/Receiving'));
 const Sales = lazy(() => import('./pages/Sales'));
 const Orders = lazy(() => import('./pages/Orders'));
 const Deliveries = lazy(() => import('./pages/Deliveries'));
@@ -54,6 +56,7 @@ function Gate() {
           <Route index element={isCourier(profile.role) ? <Navigate to="/deliveries" replace /> : <Guard feature="dashboard"><Dashboard /></Guard>} />
           <Route path="pos" element={<Guard feature="pos"><POS /></Guard>} />
           <Route path="inventory" element={<Guard feature="inventory"><Inventory /></Guard>} />
+          <Route path="receiving" element={<Guard feature="receiving"><Receiving /></Guard>} />
           <Route path="sales" element={<Guard feature="sales"><Sales /></Guard>} />
           <Route path="orders" element={<Guard feature="orders"><Orders /></Guard>} />
           <Route path="deliveries" element={<Guard feature="deliveries"><Deliveries /></Guard>} />
@@ -71,6 +74,7 @@ function Gate() {
 }
 
 export default function App() {
+  if (window.location.pathname === '/paystack-return') return <Suspense fallback={null}><PaystackReturn /></Suspense>;
   return (
     <BrowserRouter>
       <ToastProvider>

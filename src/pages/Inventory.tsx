@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Papa from 'papaparse';
 import { readSheet } from 'read-excel-file/browser';
@@ -27,7 +28,7 @@ export default function Inventory() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [edit, setEdit] = useState<Partial<Drug> | null>(null);
-  const [receive, setReceive] = useState<Drug | 'new' | null>(null);
+  const navigate = useNavigate();
   const [batchesOf, setBatchesOf] = useState<Drug | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -63,7 +64,7 @@ export default function Inventory() {
       <PageHeader title="Inventory" subtitle={`${num(drugs.length)} products`}
         actions={write && <>
           <Button onClick={() => !needOnline() && setImporting(true)}><Upload size={16} />Bulk import</Button>
-          <Button onClick={() => !needOnline() && setReceive('new')}><Truck size={16} />Receive stock</Button>
+          <Button onClick={() => navigate('/receiving')}><Truck size={16} />Receive stock</Button>
           <Button variant="primary" onClick={() => !needOnline() && setEdit({ unit_type: 'Pack', reorder_level: 10, is_active: true })}><Plus size={16} />Add product</Button>
         </>} />
       <Card>
@@ -101,7 +102,6 @@ export default function Inventory() {
         {shown.length > 300 && <p className="border-t border-line p-3 text-center text-xs text-muted">Showing the first 300 of {shown.length}. Refine your search.</p>}
       </Card>
       {edit && <DrugModal drug={edit} onClose={() => setEdit(null)} onSaved={async () => { setEdit(null); await pullCatalog(profile?.branch_id ?? null); }} />}
-      {receive && <ReceiveModal drug={receive === 'new' ? null : receive} drugs={drugs} branch={profile?.branch_id ?? null} onClose={() => setReceive(null)} onSaved={async () => { setReceive(null); await pullCatalog(profile?.branch_id ?? null); }} />}
       {batchesOf && <BatchesDrawer drug={batchesOf} write={write} onClose={() => setBatchesOf(null)} onChanged={() => pullCatalog(profile?.branch_id ?? null)} />}
       {importing && <ImportModal branch={profile?.branch_id ?? null} onClose={() => setImporting(false)} onDone={() => pullCatalog(profile?.branch_id ?? null)} />}
     </>
@@ -163,49 +163,6 @@ function DrugModal({ drug, onClose, onSaved }: { drug: Partial<Drug>; onClose: (
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.requires_prescription} onChange={(e) => set('requires_prescription', e.target.checked)} />Prescription required</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.is_active} onChange={(e) => set('is_active', e.target.checked)} />Active (sellable)</label>
         </div>
-      </div>
-    </Modal>
-  );
-}
-
-// ───────────── receive stock ─────────────
-function ReceiveModal({ drug, drugs, branch, onClose, onSaved }: { drug: Drug | null; drugs: Drug[]; branch: string | null; onClose: () => void; onSaved: () => void }) {
-  const toast = useToast();
-  const [drugId, setDrugId] = useState(drug?.id ?? '');
-  const [find, setFind] = useState('');
-  const [f, setF] = useState({ batch: '', expiry: '', qty: '', cost: '', note: '' });
-  const [busy, setBusy] = useState(false);
-  const options = useMemo(() => drugs.filter((d) => d.is_active && (!find || d.name.toLowerCase().includes(find.toLowerCase()))).slice(0, 50), [drugs, find]);
-  const save = async () => {
-    if (!branch) return toast('Your account has no branch assigned.', 'error');
-    if (!drugId) return toast('Choose a product.', 'error');
-    if (!f.batch.trim() || !f.expiry || !(parseInt(f.qty, 10) > 0)) return toast('Batch number, expiry date and quantity are required.', 'error');
-    if (f.expiry < todayISO()) return toast('This expiry date has already passed.', 'error');
-    setBusy(true);
-    const { error } = await supabase.rpc('receive_stock', { p_branch: branch, p_drug: drugId, p_batch: f.batch.trim(), p_expiry: f.expiry, p_qty: parseInt(f.qty, 10), p_cost: f.cost === '' ? null : Number(f.cost), p_supplier: null, p_note: f.note || null });
-    setBusy(false);
-    if (error) return toast(errMsg(error), 'error');
-    toast('Stock received.');
-    onSaved();
-  };
-  return (
-    <Modal title="Receive stock" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>Add to stock</Button></>}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <Field label="Product *">
-            {drug ? <Input disabled value={drug.name} /> : <>
-              <Input placeholder="Type to filter…" value={find} onChange={(e) => setFind(e.target.value)} className="mb-2" />
-              <Select value={drugId} onChange={(e) => setDrugId(e.target.value)} size={5} className="h-36">
-                {options.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </Select>
-            </>}
-          </Field>
-        </div>
-        <Field label="Batch number *"><Input value={f.batch} onChange={(e) => setF({ ...f, batch: e.target.value })} /></Field>
-        <Field label="Expiry date *"><Input type="date" min={todayISO()} value={f.expiry} onChange={(e) => setF({ ...f, expiry: e.target.value })} /></Field>
-        <Field label="Quantity received *"><Input inputMode="numeric" value={f.qty} onChange={(e) => setF({ ...f, qty: e.target.value.replace(/\D/g, '') })} /></Field>
-        <Field label="Unit cost"><Input inputMode="decimal" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value.replace(/[^\d.]/g, '') })} /></Field>
-        <Field label="Note (supplier / invoice)" className="sm:col-span-2"><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
       </div>
     </Modal>
   );

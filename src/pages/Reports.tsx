@@ -18,7 +18,7 @@ export default function Reports() {
     const { data, error } = await supabase.rpc('profit_report', { p_from: new Date(from + 'T00:00:00').toISOString(), p_to: new Date(to + 'T23:59:59.999').toISOString() });
     if (error) throw error;
     return data as { revenue: number; refunds: number; cost_of_goods: number; gross_profit: number; lines_without_cost: number; top_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[] };
-  }, [from, to, profile?.role]);
+  }, [from, to, profile?.role], { cacheKey: `reports.profit.${from}.${to}` });
 
   const r = useAsync(async () => {
     const start = new Date(from + 'T00:00:00').toISOString();
@@ -40,7 +40,7 @@ export default function Reports() {
     const revenue = sales.reduce((s, x) => s + Number(x.total), 0);
     return { count: sales.length, revenue, refunds, discounts: sales.reduce((s, x) => s + Number(x.discount), 0), expenses,
       byDay: [...byDay.entries()].sort(), top: [...prod.values()].sort((a, b) => b.value - a.value).slice(0, 20), method: [...method.entries()].sort((a, b) => b[1] - a[1]) };
-  }, [from, to]);
+  }, [from, to], { cacheKey: `reports.sales.${from}.${to}` });
 
   const d = r.data;
   const exportCSV = () => d && downloadCSV(`sales-report-${from}-to-${to}.csv`, [['Date', 'Sales', 'Total'], ...d.byDay.map(([k, v]) => [k, v.n, v.total]), [], ['Product', 'Qty sold', 'Value'], ...d.top.map((t) => [t.name, t.qty, t.value])]);
