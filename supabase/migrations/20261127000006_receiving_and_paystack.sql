@@ -36,6 +36,7 @@ create table public.stock_receipt_items (
   line_total numeric(14,2) not null default 0
 );
 create index stock_receipt_items_receipt on public.stock_receipt_items (receipt_id);
+create index stock_receipt_items_drug on public.stock_receipt_items (drug_id);
 
 alter table public.stock_receipts enable row level security;
 alter table public.stock_receipt_items enable row level security;
@@ -151,6 +152,8 @@ create table public.paystack_transactions (
   created_at timestamptz not null default now()
 );
 create index paystack_status on public.paystack_transactions (status, created_at desc);
+create index paystack_claimed_sale on public.paystack_transactions (claimed_sale);
+create index paystack_claimed_order on public.paystack_transactions (claimed_order);
 alter table public.paystack_transactions enable row level security;
 create policy paystack_read on public.paystack_transactions for select to authenticated
   using ((select public.has_role('admin','pharmacist','cashier')) and (select public.can_see_branch(branch_id)));
