@@ -4,7 +4,10 @@ import { errMsg, supabase } from '../lib/supabase';
 import { useAsync } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { can } from '../lib/permissions';
-import { downloadCSV, fmtDate, money, monthRange, todayISO } from '../lib/format';
+import { downloadCSV, fmtDate, money, monthRange, todayISO, uid } from '../lib/format';
+import { runOrQueue } from '../lib/outbox';
+import { db } from '../lib/db';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { Button, Card, Confirm, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Td, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
 
@@ -31,8 +34,12 @@ export default function Expenses() {
     const { data, error } = await supabase.rpc('expense_report', { p_from: rf, p_to: rt, p_branch: null });
     if (error) throw error;
     return data as any[];
-  }, [rf, rt]);
+  }, [rf, rt], { cacheKey: `expenses.report.${rf}.${rt}` });
   const sum = (report.data ?? []).reduce((s, r) => s + Number(r.total_cost), 0);
+  // expenses saved on this device that have not uploaded yet (shown so nothing seems to "disappear" offline)
+  const waitingRows = useLiveQuery(
+    () => db.outbox.toArray().then((a) => a.filter((o) => o.type === 'expense.add').flatMap((o) => o.payload.rows as any[])),
+    [], [] as any[]);
 
   const setRow = (i: number, k: keyof Row, v: string) => setRows((a) => a.map((r, x) => (x === i ? { ...r, [k]: v } : r)));
   const filled = rows.filter((r) => r.description.trim() || r.unit);
@@ -46,10 +53,13 @@ export default function Expenses() {
     }
     if (!profile?.branch_id) return toast('Your account has no branch assigned.', 'error');
     setSaving(true);
-    const { error } = await supabase.from('expenses').insert(filled.map((r) => ({ branch_id: profile.branch_id, expense_date: r.date, description: r.description.trim(), unit_cost: Number(r.unit), quantity: Number(r.qty) })));
+    const payload = filled.map((r) => ({ id: uid(), branch_id: profile.branch_id, expense_date: r.date, description: r.description.trim(), unit_cost: Number(r.unit), quantity: Number(r.qty) }));
+    const res = await runOrQueue('expense.add', { rows: payload }, `Expenses: ${payload.length} item(s), ${money(payload.reduce((s, r) => s + r.unit_cost * r.quantity, 0))}`);
     setSaving(false);
-    if (error) return toast(errMsg(error), 'error');
-    toast(`${filled.length} expense(s) saved.`); setRows([blank()]); report.reload();
+    if (res.error) return toast(res.error, 'error');
+    toast(res.queued ? `${filled.length} expense(s) saved on this device. They upload automatically when you are online.` : `${filled.length} expense(s) saved.`, res.queued ? 'info' : 'ok');
+    setRows([blank()]);
+    if (!res.queued) report.reload();
   };
 
   const remove = async () => {
@@ -89,6 +99,14 @@ export default function Expenses() {
         </div>
       </Card>
 
+      {waitingRows.length > 0 && (
+        <Card className="mb-4 no-print">
+          <div className="border-b border-line px-4 py-2.5 text-sm font-semibold">Saved on this device, waiting to upload ({waitingRows.length})</div>
+          <ul className="divide-y divide-line text-sm">
+            {waitingRows.map((r: any) => <li key={r.id} className="flex justify-between px-4 py-2"><span>{fmtDate(r.expense_date)} · {r.description} <span className="text-muted">({Number(r.quantity)} × {money(r.unit_cost)})</span></span><span className="tnum font-medium">{money(Math.round(r.unit_cost * r.quantity * 100) / 100)}</span></li>)}
+          </ul>
+        </Card>
+      )}
       <Card className="printable">
         <div className="flex flex-wrap items-end gap-3 border-b border-line p-4 no-print">
           <Field label="View by"><Select value={mode} onChange={(e) => setMode(e.target.value as any)} className="w-36"><option value="month">Month</option><option value="range">Date range</option></Select></Field>

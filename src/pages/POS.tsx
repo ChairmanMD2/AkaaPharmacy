@@ -1,20 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Minus, Plus, ShieldAlert, Trash2, X, ScanBarcode } from 'lucide-react';
+import { Clock3, Minus, PauseCircle, Plus, ShieldAlert, Trash2, X, ScanBarcode } from 'lucide-react';
 import { db } from '../lib/db';
 import { useAuth } from '../lib/auth';
 import { availableFromBatches, saveSaleLocal, syncAll } from '../lib/sync';
 import { daysUntil, money, num, todayISO } from '../lib/format';
 import type { Drug, PayMethod, PendingSale } from '../lib/types';
 import { PAY_LABEL } from '../lib/types';
-import { Badge, Button, Card, Empty, Input, Select, SearchInput, Spinner } from '../components/ui';
+import { Badge, Button, Card, Empty, Input, Modal, Select, SearchInput, Spinner } from '../components/ui';
 import { useToast } from '../components/toast';
 import { ReceiptModal } from '../components/Receipt';
-import { useDebounced } from '../lib/hooks';
+import { useDebounced, useOnline } from '../lib/hooks';
+import { runOrQueue } from '../lib/outbox';
+import { getHeld, putHeld, takePrefill, type HeldCart } from '../lib/invoice';
+import { PaystackModal } from '../components/PaystackModal';
+import { uid } from '../lib/format';
 
 interface Line { drug: Drug; qty: number; price: number }
-interface Pay { method: PayMethod; amount: string; reference: string }
-const METHODS: PayMethod[] = ['cash', 'transfer', 'pos_terminal'];
+interface Pay { method: PayMethod; amount: string; reference: string }   // for Paystack, `reference` is set once the server confirmed the payment
+const BASE_METHODS: PayMethod[] = ['cash', 'transfer', 'pos_terminal'];
 
 export default function POS() {
   const { profile } = useAuth();
@@ -34,6 +38,14 @@ export default function POS() {
   const [flashId, setFlashId] = useState<string | null>(null);
   const flash = (id: string) => { setFlashId(null); requestAnimationFrame(() => { setFlashId(id); setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 850); }); };
   const canEditPrice = profile?.role === 'admin' || profile?.role === 'pharmacist';
+  const online = useOnline();
+  const settings = useLiveQuery(async () => (await db.meta.get('settings'))?.value ?? {}, [], {} as Record<string, any>);
+  const paystackOn = settings.paystack_enabled === true || settings.paystack_enabled === 'true';
+  const METHODS: PayMethod[] = paystackOn && online ? [...BASE_METHODS, 'paystack'] : BASE_METHODS;
+  const [payIdx, setPayIdx] = useState<number | null>(null);              // which payment line is being collected via Paystack
+  const held = useLiveQuery(() => getHeld(), [], [] as HeldCart[]);
+  const [heldOpen, setHeldOpen] = useState(false);
+  const [invoiceCtx, setInvoiceCtx] = useState<{ no: string; wishIds: string[] } | null>(null);
 
   const avail = useMemo(() => {
     const m = new Map<string, number>();
@@ -103,6 +115,52 @@ export default function POS() {
     return () => window.removeEventListener('keydown', h);
   }, []);
 
+  // An invoice made from the Wish List arrives here ready to be paid.
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current || !drugs?.length || !batches) return;
+    const p = takePrefill();
+    prefilled.current = true;
+    if (!p) return;
+    const lines: Line[] = [];
+    const short: string[] = [];
+    p.lines.forEach((l) => {
+      const d = drugs.find((x) => x.id === l.drug_id);
+      if (!d) return;
+      const have = availableFromBatches(batches, d.id);
+      const qty = Math.min(l.qty, have);
+      if (qty < 1) { short.push(d.name); return; }
+      if (qty < l.qty) short.push(`${d.name} (only ${have})`);
+      lines.push({ drug: d, qty, price: d.selling_price });
+    });
+    setCart(lines);
+    if (p.customer) setCustomer(p.customer);
+    setInvoiceCtx({ no: p.invoiceNo, wishIds: p.wishIds });
+    toast(short.length ? `Invoice ${p.invoiceNo} loaded. Check stock for: ${short.join(', ')}.` : `Invoice ${p.invoiceNo} loaded. Take payment to finish.`, short.length ? 'info' : 'ok');
+  }, [drugs, batches]);
+
+  const hold = async () => {
+    if (!cart.length) return;
+    const h: HeldCart = { id: uid(), at: new Date().toISOString(), customer: customer.trim(), lines: cart.map((l) => ({ drug_id: l.drug.id, qty: l.qty, price: l.price })) };
+    await putHeld([h, ...(await getHeld())]);
+    setCart([]); setDiscount(''); setCustomer(''); setPays([{ method: 'cash', amount: '', reference: '' }]); setInvoiceCtx(null);
+    toast('Sale put on hold. Serve the next customer, then resume it from "Held".', 'info');
+  };
+  const resume = async (h: HeldCart) => {
+    if (cart.length) return toast('Finish or hold the current sale first.', 'error');
+    const lines: Line[] = [];
+    h.lines.forEach((l) => {
+      const d = (drugs ?? []).find((x) => x.id === l.drug_id);
+      if (!d) return;
+      const qty = Math.min(l.qty, availableFromBatches(batches ?? [], d.id));
+      if (qty > 0) lines.push({ drug: d, qty, price: l.price });
+    });
+    await putHeld((await getHeld()).filter((x) => x.id !== h.id));
+    setCart(lines); setCustomer(h.customer); setHeldOpen(false);
+    if (lines.length < h.lines.length) toast('Some items are no longer fully in stock and were adjusted.', 'info');
+  };
+  const dropHeld = async (id: string) => { await putHeld((await getHeld()).filter((x) => x.id !== id)); };
+
   const validate = (): string | null => {
     if (!cart.length) return 'Add at least one item.';
     if (!profile?.branch_id) return 'Your account has no branch assigned. Ask an administrator.';
@@ -110,6 +168,7 @@ export default function POS() {
     for (const p of pays) {
       if (!(Number(p.amount) > 0)) continue;
       if ((p.method === 'transfer' || p.method === 'pos_terminal') && p.reference.trim().length < 3) return `Enter the ${PAY_LABEL[p.method]} reference / approval code.`;
+      if (p.method === 'paystack' && !p.reference) return 'Collect the Paystack payment first (use the Collect button), or choose another method.';
     }
     return null;
   };
@@ -125,11 +184,17 @@ export default function POS() {
         branch_id: profile!.branch_id!,
         cashier_name: profile!.full_name || 'Staff',
         customer_name: customer.trim() || undefined,
+        notes: invoiceCtx ? `Invoice ${invoiceCtx.no}` : undefined,
         items: cart.map((l) => ({ drug_id: l.drug.id, name: l.drug.name, quantity: l.qty, unit_price: l.price })),
         discount: disc,
         payments,
       });
       setDone(sale);
+      if (invoiceCtx?.wishIds.length) {
+        const r = await runOrQueue('wish.fulfil', { ids: invoiceCtx.wishIds }, `Wish list: mark ${invoiceCtx.wishIds.length} request(s) fulfilled (invoice ${invoiceCtx.no})`);
+        if (r.error) toast(`Sale saved, but the wish list could not be updated: ${r.error}`, 'error');
+      }
+      setInvoiceCtx(null);
       setCart([]); setDiscount(''); setCustomer(''); setPays([{ method: 'cash', amount: '', reference: '' }]); setQ('');
       syncAll(profile!.branch_id); // background upload
     } catch (e: any) {
@@ -187,8 +252,12 @@ export default function POS() {
 
       <Card ref={cartRef} className="flex h-fit flex-col lg:sticky lg:top-0">
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <h2 className="font-semibold">Current sale</h2>
-          {cart.length > 0 && <button className="text-xs text-muted hover:text-bad" onClick={() => setCart([])}>Clear</button>}
+          <h2 className="font-semibold">Current sale{invoiceCtx && <span className="ml-2 text-xs font-normal text-brand">{invoiceCtx.no}</span>}</h2>
+          <div className="flex items-center gap-3">
+            {cart.length > 0 && <button className="flex items-center gap-1 text-xs text-muted hover:text-fg" onClick={hold} title="Park this sale and serve the next customer"><PauseCircle size={14} />Hold</button>}
+            {held.length > 0 && <button className="flex items-center gap-1 text-xs font-medium text-brand" onClick={() => setHeldOpen(true)}><Clock3 size={14} />Held ({held.length})</button>}
+            {cart.length > 0 && <button className="text-xs text-muted hover:text-bad" onClick={() => { setCart([]); setInvoiceCtx(null); }}>Clear</button>}
+          </div>
         </div>
         <div className="max-h-[38vh] overflow-y-auto">
           {!cart.length && <Empty title="Cart is empty" hint="Search or scan a product to begin." />}
@@ -235,7 +304,7 @@ export default function POS() {
             {pays.map((p, i) => (
               <div key={i} className="rounded-lg border border-line p-2">
                 <div className="flex gap-2">
-                  <Select aria-label="Payment method" value={p.method} className="w-36" onChange={(e) => setPays((a) => a.map((x, k) => (k === i ? { ...x, method: e.target.value as PayMethod } : x)))}>
+                  <Select aria-label="Payment method" value={p.method} className="w-36" onChange={(e) => setPays((a) => a.map((x, k) => (k === i ? { ...x, method: e.target.value as PayMethod, reference: '', amount: e.target.value === 'paystack' && !x.amount ? String(Math.max(0, total - paid) || total) : x.amount } : x)))}>
                     {METHODS.map((m) => <option key={m} value={m}>{PAY_LABEL[m]}</option>)}
                   </Select>
                   <Input aria-label="Amount" inputMode="decimal" placeholder={autoFill ? String(total || '') : 'Amount'} value={p.amount}
@@ -245,6 +314,12 @@ export default function POS() {
                 {(p.method === 'transfer' || p.method === 'pos_terminal') && (
                   <Input className="mt-2" placeholder={p.method === 'transfer' ? 'Transfer ID / reference' : 'POS approval code / RRN'} value={p.reference}
                     onChange={(e) => setPays((a) => a.map((x, k) => (k === i ? { ...x, reference: e.target.value } : x)))} />
+                )}
+                {p.method === 'paystack' && (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-md bg-surface2 px-2 py-1.5 text-sm">
+                    {p.reference ? <span className="text-ok">Paid · confirmed by Paystack <span className="text-xs text-muted">({p.reference})</span></span>
+                      : <><span className="text-muted">Not collected yet</span><Button size="sm" variant="primary" disabled={!(Number(p.amount) > 0)} onClick={() => setPayIdx(i)}>Collect {money(Number(p.amount) || 0)}</Button></>}
+                  </div>
                 )}
                 {due > 0 && i === pays.length - 1 && !autoFill && <button className="mt-1 text-xs text-brand" onClick={() => setPays((a) => a.map((x, k) => (k === i ? { ...x, amount: String((Number(x.amount) || 0) + due) } : x)))}>Fill remaining {money(due)}</button>}
               </div>
@@ -262,6 +337,24 @@ export default function POS() {
           <div><p className="text-xs text-muted">{cart.reduce((s, l) => s + l.qty, 0)} item(s)</p><p className="text-lg font-semibold tnum">{money(total)}</p></div>
           <Button variant="primary" size="lg" onClick={() => cartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Review &amp; pay</Button>
         </div>
+      )}
+      {payIdx !== null && pays[payIdx] && (
+        <PaystackModal amount={Number(pays[payIdx].amount) || 0} purpose="pos" onClose={() => setPayIdx(null)}
+          onSuccess={(reference) => { setPays((a) => a.map((x, k) => (k === payIdx ? { ...x, reference } : x))); setPayIdx(null); toast('Paystack payment confirmed.'); }} />
+      )}
+      {heldOpen && (
+        <Modal title="Held sales" onClose={() => setHeldOpen(false)}>
+          {!held.length ? <p className="py-4 text-center text-sm text-muted">Nothing on hold.</p> : (
+            <ul className="divide-y divide-line">
+              {held.map((h) => (
+                <li key={h.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0 text-sm"><p className="font-medium">{h.customer || 'Walk-in customer'}</p><p className="text-xs text-muted">{h.lines.length} item(s) · {money(h.lines.reduce((s, l) => s + l.qty * l.price, 0))} · {new Date(h.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p></div>
+                  <div className="flex gap-1"><Button size="sm" variant="primary" onClick={() => resume(h)}>Resume</Button><Button size="sm" onClick={() => dropHeld(h.id)}>Delete</Button></div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Modal>
       )}
       {done && <ReceiptModal sale={done} onClose={() => { setDone(null); searchRef.current?.focus(); }} />}
     </div>

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import type { Profile } from './types';
+import { clearCache, setCacheScope } from './cache';
 
 const CACHE_KEY = 'akaa_profile';
 
@@ -36,11 +37,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!s) { setProfile(null); return; }
     const { data, error } = await supabase.from('profiles').select('id,full_name,email,phone,role,branch_id,is_active').eq('id', s.user.id).maybeSingle();
     if (data) {
+      setCacheScope((data as Profile).id);
       setProfile(data as Profile);
       localStorage.setItem(CACHE_KEY, JSON.stringify(data));
     } else if (error) {
       const c = readCache();
-      if (c && c.id === s.user.id) setProfile(c); // offline: use the last known profile
+      if (c && c.id === s.user.id) { setCacheScope(c.id); setProfile(c); } // offline: use the last known profile
     }
   }, []);
 
@@ -55,14 +57,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (!navigator.onLine) {
         // No usable session and no connection: allow the counter to keep selling with the cached profile.
         const c = readCache();
-        if (c) { setProfile(c); setOfflineMode(true); }
+        if (c) { setCacheScope(c.id); setProfile(c); setOfflineMode(true); }
       }
       if (alive) setLoading(false);
     })();
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       if (event === 'PASSWORD_RECOVERY') setRecovery(true);
-      if (event === 'SIGNED_OUT') { setProfile(null); localStorage.removeItem(CACHE_KEY); }
+      if (event === 'SIGNED_OUT') { setProfile(null); localStorage.removeItem(CACHE_KEY); setCacheScope(null); void clearCache(); }
       else if (s) setTimeout(() => loadProfile(s), 0);
     });
     return () => { alive = false; sub.subscription.unsubscribe(); };

@@ -21,7 +21,7 @@ export default function Users() {
     const [p, b] = await Promise.all([supabase.from('profiles').select('*').order('created_at'), supabase.from('branches').select('id,name,code').order('name')]);
     if (p.error) throw p.error;
     return { users: p.data as any[], branches: (b.data ?? []) as any[] };
-  }, []);
+  }, [], { cacheKey: 'users.list' });
   const pendingCount = users.data?.users.filter((u) => !u.is_active).length ?? 0;
 
   const save = async (f: any) => {

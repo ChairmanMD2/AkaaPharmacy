@@ -3,6 +3,9 @@ import { fetchAll, isNetworkError, errMsg, supabase } from './supabase';
 import type { Batch, Drug, PendingSale } from './types';
 import { setCurrency, todayISO, uid } from './format';
 import { singleFlight } from './singleFlight';
+import { isOnline, markOffline, onReconnect } from './connectivity';
+import { pushOutbox } from './outbox';
+import { applyReceiptToBatches } from './receiptLocal';
 
 const DRUG_COLS =
   'id,name,generic_name,category,nafdac_number,barcode,unit_type,selling_price,wholesale_price,requires_prescription,reorder_level,is_active';
@@ -24,15 +27,21 @@ export async function pullCatalog(branchId: string | null) {
   if (branchId) {
     batches = await fetchAll<Batch>((f, t) => supabase.from('drug_batches').select(BATCH_COLS).eq('branch_id', branchId).range(f, t));
   }
-  const unsynced = await db.pending.where('status').anyOf('pending', 'syncing', 'error').toArray();
+  const unsynced = await db.pending_sales.where('status').anyOf('pending', 'syncing', 'error').toArray();
   const dec = new Map<string, number>();
   unsynced.forEach((s) => s.alloc.forEach((a) => dec.set(a.batch_id, (dec.get(a.batch_id) ?? 0) + a.qty)));
   batches = batches.map((b) => (dec.has(b.id) ? { ...b, quantity_remaining: Math.max(0, b.quantity_remaining - dec.get(b.id)!) } : b));
-  await db.transaction('rw', db.drugs, db.batches, async () => {
+  // stock receipts entered on this device that have not reached the server yet are still counted
+  const waitingReceipts = (await db.outbox.toArray()).filter((o) => o.type === 'receipt.create');
+  for (const o of waitingReceipts) batches = applyReceiptToBatches(batches, o.payload.receipt);
+  const branches = await fetchAll<any>((f, t) => supabase.from('branches').select('id,code,name').range(f, t));
+  await db.transaction('rw', db.drugs, db.batches, db.branches, async () => {
     await db.drugs.clear();
     await db.drugs.bulkPut(drugs);
     await db.batches.clear();
     await db.batches.bulkPut(batches);
+    await db.branches.clear();
+    await db.branches.bulkPut(branches);
   });
   await setMeta('catalog_at', new Date().toISOString());
 }
@@ -47,10 +56,10 @@ export async function pullSettings() {
 }
 
 export async function pushSales(): Promise<{ pushed: number; failed: number; offline: boolean }> {
-  const queue = await db.pending.where('status').anyOf('pending', 'syncing').sortBy('created_at');
+  const queue = await db.pending_sales.where('status').anyOf('pending', 'syncing').sortBy('created_at');
   let pushed = 0, failed = 0;
   for (const s of queue) {
-    await db.pending.update(s.id, { status: 'syncing' });
+    await db.pending_sales.update(s.id, { status: 'syncing' });
     const payload = {
       id: s.id,
       local_ref: s.local_ref,
@@ -64,30 +73,41 @@ export async function pushSales(): Promise<{ pushed: number; failed: number; off
     const { data, error } = await supabase.rpc('process_offline_sale', { p_sale: payload });
     if (error) {
       if (isNetworkError(error)) {
-        await db.pending.update(s.id, { status: 'pending' });
+        markOffline();
+        await db.pending_sales.update(s.id, { status: 'pending' });
         return { pushed, failed, offline: true };
       }
-      await db.pending.update(s.id, { status: 'error', error: errMsg(error), attempts: s.attempts + 1 });
+      await db.pending_sales.update(s.id, { status: 'error', error: errMsg(error), attempts: s.attempts + 1 });
       failed++;
       continue;
     }
-    await db.pending.update(s.id, { status: 'synced', receipt_no: data?.receipt_no, needs_review: !!data?.needs_review, error: undefined });
+    await db.pending_sales.update(s.id, { status: 'synced', receipt_no: data?.receipt_no, needs_review: !!data?.needs_review, error: undefined });
     pushed++;
   }
   // keep a week of synced history locally for reprints
   const cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
-  await db.pending.where('status').equals('synced').filter((s) => s.created_at < cutoff).delete();
+  await db.pending_sales.where('status').equals('synced').filter((s) => s.created_at < cutoff).delete();
   return { pushed, failed, offline: false };
 }
 
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
+let currentBranch: string | null = null;
+export const setSyncBranch = (b: string | null) => { currentBranch = b; };
+// the moment the connection comes back, upload everything that was waiting
+onReconnect(() => { void syncAll(currentBranch); });
+
 async function syncOnce(branchId: string | null): Promise<SyncResult> {
-  if (!navigator.onLine) return { pushed: 0, failed: 0, offline: true };
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return { pushed: 0, failed: 0, offline: true };
   setState({ syncing: true });
   let result: SyncResult;
   try {
     const r = await pushSales();
+    if (!r.offline) {
+      const o = await pushOutbox();
+      r.pushed += o.sent; r.failed += o.failed;
+      if (o.offline) { r.offline = true; }
+    }
     if (!r.offline) {
       await pullCatalog(branchId);
       await pullSettings();
@@ -96,14 +116,15 @@ async function syncOnce(branchId: string | null): Promise<SyncResult> {
     result = r;
   } catch (e) {
     const offline = isNetworkError(e);
+    if (offline) markOffline();
     setState({ lastError: offline ? null : errMsg(e) });
     result = { pushed: 0, failed: 0, offline, message: errMsg(e) };
   } finally {
     setState({ syncing: false });
   }
   // The browser says we're online but the request failed (connection still settling): try again shortly.
-  if (result.offline && navigator.onLine && !retryTimer) {
-    retryTimer = setTimeout(() => { retryTimer = null; void syncAll(branchId); }, 8000);
+  if (result.offline && !retryTimer) {
+    retryTimer = setTimeout(() => { retryTimer = null; if (isOnline()) void syncAll(branchId); }, 10000);
   }
   return result;
 }
@@ -112,7 +133,7 @@ async function syncOnce(branchId: string | null): Promise<SyncResult> {
 export const syncAll = singleFlight(syncOnce);
 
 export async function retrySale(id: string) {
-  await db.pending.update(id, { status: 'pending', error: undefined });
+  await db.pending_sales.update(id, { status: 'pending', error: undefined });
 }
 
 // ───── local selling helpers ─────
@@ -165,7 +186,7 @@ export interface NewSaleInput {
 /** Writes the sale and deducts local stock atomically. Works fully offline. */
 export async function saveSaleLocal(input: NewSaleInput): Promise<PendingSale> {
   const local_ref = await nextLocalRef();
-  return db.transaction('rw', db.batches, db.pending, async () => {
+  return db.transaction('rw', db.batches, db.pending_sales, async () => {
     const batches = await db.batches.toArray();
     const alloc: PendingSale['alloc'] = [];
     for (const it of input.items) {
@@ -202,7 +223,7 @@ export async function saveSaleLocal(input: NewSaleInput): Promise<PendingSale> {
       status: 'pending',
       attempts: 0,
     };
-    await db.pending.add(sale);
+    await db.pending_sales.add(sale);
     return sale;
   });
 }

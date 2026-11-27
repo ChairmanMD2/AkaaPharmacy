@@ -16,6 +16,7 @@ export function isNetworkError(err: unknown): boolean {
 }
 
 export function errMsg(err: unknown): string {
+  if (isNetworkError(err)) return 'No connection right now. This action needs the internet; try again when you are back online.';
   const e = err as any;
   return e?.message || e?.error_description || String(err);
 }

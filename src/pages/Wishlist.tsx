@@ -8,6 +8,10 @@ import { useAuth } from '../lib/auth';
 import { downloadCSV, fmtDate, num, todayISO } from '../lib/format';
 import { Badge, Button, Card, Confirm, Empty, ErrorBox, Field, Input, Modal, PageHeader, SearchInput, Select, Spinner, Table, Tabs, Td, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
+import { runOrQueue } from '../lib/outbox';
+import { WishInvoice } from '../components/WishInvoice';
+import { uid } from '../lib/format';
+import { FileText } from 'lucide-react';
 
 const STATUS: Record<string, 'info' | 'warn' | 'ok' | 'neutral'> = { open: 'info', sourcing: 'warn', fulfilled: 'ok', declined: 'neutral' };
 const REASON: Record<string, string> = { out_of_stock: 'Out of stock', not_stocked: 'Not in inventory', other: 'Other' };
@@ -23,12 +27,15 @@ export default function Wishlist() {
   const [status, setStatus] = useState('all');
   const [edit, setEdit] = useState<any | null>(null);
   const [del, setDel] = useState<any | null>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [invoicing, setInvoicing] = useState(false);
+  const waitingNew = useLiveQuery(() => db.outbox.toArray().then((a) => a.filter((o) => o.type === 'wish.add').map((o) => ({ ...o.payload.row, _waiting: true }))), [], [] as any[]);
 
   const items = useAsync(async () => {
     const { data, error } = await supabase.from('wishlist_items').select('*').order('requested_on', { ascending: false }).order('created_at', { ascending: false }).limit(1000);
     if (error) throw error;
     return data as any[];
-  }, []);
+  }, [], { cacheKey: 'wish.items' });
   const demand = useAsync(async () => {
     const [d, m] = await Promise.all([
       supabase.from('wishlist_demand').select('*').order('request_count', { ascending: false }).limit(25),
@@ -36,9 +43,14 @@ export default function Wishlist() {
     ]);
     if (d.error) throw d.error;
     return { top: d.data as any[], months: ((m.data ?? []) as any[]).reverse() };
-  }, [items.data]);
+  }, [items.data], { cacheKey: 'wish.demand' });
 
   const list = useMemo(() => (items.data ?? []).filter((i) => (status === 'all' || i.status === status) && (!q.trim() || [i.product_name, i.customer_name, i.customer_phone, i.notes].some((x) => (x ?? '').toLowerCase().includes(q.toLowerCase())))), [items.data, q, status]);
+
+  const selectable = (i: any) => i.status === 'open' || i.status === 'sourcing';
+  const toggle = (id: string) => setSel((cur) => { const n = new Set(cur); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allOn = list.filter(selectable).length > 0 && list.filter(selectable).every((i) => sel.has(i.id));
+  const chosen = (items.data ?? []).filter((i) => sel.has(i.id));
 
   const remove = async () => {
     const { error } = await supabase.rpc('delete_wishlist_item', { p_id: del.id });
@@ -51,7 +63,7 @@ export default function Wishlist() {
   return (
     <>
       <PageHeader title="Wish List" subtitle="Products customers asked for that were out of stock or not stocked"
-        actions={<><Button onClick={exportCSV}><Download size={16} />Export</Button><Button variant="primary" onClick={() => setEdit({})}><Plus size={16} />Add request</Button></>} />
+        actions={<>{sel.size > 0 && <Button variant="primary" onClick={() => setInvoicing(true)}><FileText size={16} />Create invoice ({sel.size})</Button>}<Button onClick={exportCSV}><Download size={16} />Export</Button><Button variant="primary" onClick={() => setEdit({})}><Plus size={16} />Add request</Button></>} />
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'requests', label: 'Requests', count: items.data?.length }, { id: 'insights', label: 'Demand insights' }]} />
       {tab === 'requests' ? (
         <Card>
@@ -59,12 +71,14 @@ export default function Wishlist() {
             <SearchInput value={q} onChange={setQ} placeholder="Search product, customer, notes…" className="min-w-52 flex-1" />
             <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-40" aria-label="Status"><option value="all">All statuses</option><option value="open">Open</option><option value="sourcing">Sourcing</option><option value="fulfilled">Fulfilled</option><option value="declined">Declined</option></Select>
           </div>
+          {waitingNew.length > 0 && <ul className="divide-y divide-line border-b border-line text-sm">{waitingNew.map((r: any) => <li key={r.id} className="flex items-center justify-between px-4 py-2"><span><b>{r.product_name}</b> × {r.quantity}{r.customer_name ? ` · ${r.customer_name}` : ''}</span><Badge tone="warn">saved on this device, waiting to upload</Badge></li>)}</ul>}
           {items.loading && !items.data ? <Spinner /> : items.error ? <ErrorBox message={items.error} onRetry={items.reload} /> : !list.length ? <Empty title="No requests yet" hint="When a customer asks for something you cannot supply, record it here. Over time this shows what to stock." /> : (
-            <Table head={['Date', 'Product', 'Qty', 'Customer', 'Reason', 'Status', '']}>
+            <Table head={[<input key="all" type="checkbox" aria-label="Select all open requests" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(list.filter(selectable).map((i) => i.id)))} />, 'Date', 'Product', 'Qty', 'Customer', 'Reason', 'Status', '']}>
               {list.map((i) => {
                 const mine = i.created_by === profile?.id && i.status === 'open';
                 return (
-                  <tr key={i.id} className="hover:bg-surface2">
+                  <tr key={i.id} className={`hover:bg-surface2 ${sel.has(i.id) ? 'bg-brandsoft' : ''}`}>
+                    <Td>{selectable(i) ? <input type="checkbox" aria-label={`Select ${i.product_name}`} checked={sel.has(i.id)} onChange={() => toggle(i.id)} /> : null}</Td>
                     <Td className="text-muted">{fmtDate(i.requested_on)}</Td>
                     <Td><div className="font-medium">{i.product_name}</div>{i.notes && <div className="max-w-xs truncate text-xs text-muted">{i.notes}</div>}</Td>
                     <Td className="tnum">{i.quantity}</Td>
@@ -109,13 +123,14 @@ export default function Wishlist() {
           </Card>
         </div>
       )}
-      {edit && <EditModal item={edit} manager={manager} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); items.reload(); }} />}
+      {invoicing && chosen.length > 0 && <WishInvoice items={chosen} onClose={() => setInvoicing(false)} />}
+      {edit && <EditModal item={edit} manager={manager} onClose={() => setEdit(null)} onSaved={(queued) => { setEdit(null); if (!queued) items.reload(); }} />}
       {del && <Confirm title="Remove this request?" danger confirmLabel="Remove" onClose={() => setDel(null)} onConfirm={remove} message={`"${del.product_name}" will be hidden from the list. The action is recorded in the audit log.`} />}
     </>
   );
 }
 
-function EditModal({ item, manager, onClose, onSaved }: { item: any; manager: boolean; onClose: () => void; onSaved: () => void }) {
+function EditModal({ item, manager, onClose, onSaved }: { item: any; manager: boolean; onClose: () => void; onSaved: (queued: boolean) => void }) {
   const { profile } = useAuth();
   const toast = useToast();
   const drugs = useLiveQuery(() => db.drugs.toArray(), [], []);
@@ -130,10 +145,13 @@ function EditModal({ item, manager, onClose, onSaved }: { item: any; manager: bo
     const match = drugs.find((d) => d.name.toLowerCase() === f.product_name.trim().toLowerCase());
     const body: any = { product_name: f.product_name.trim(), quantity: qty, customer_name: f.customer_name.trim() || null, customer_phone: f.customer_phone.trim() || null, reason: f.reason, notes: f.notes.trim() || null, requested_on: f.requested_on, drug_id: match?.id ?? null };
     if (manager) body.status = f.status;
-    const { error } = item.id ? await supabase.from('wishlist_items').update(body).eq('id', item.id) : await supabase.from('wishlist_items').insert({ ...body, branch_id: profile?.branch_id });
+    const r = item.id
+      ? await runOrQueue('wish.update', { id: item.id, patch: body }, `Wish list update: ${body.product_name}`)
+      : await runOrQueue('wish.add', { row: { id: uid(), ...body, branch_id: profile?.branch_id } }, `Wish list: ${body.product_name} × ${body.quantity}`);
     setBusy(false);
-    if (error) return toast(errMsg(error), 'error');
-    toast(item.id ? 'Request updated.' : 'Request recorded.'); onSaved();
+    if (r.error) return toast(r.error, 'error');
+    toast(r.queued ? 'Saved on this device. It uploads automatically when you are online.' : item.id ? 'Request updated.' : 'Request recorded.', r.queued ? 'info' : 'ok');
+    onSaved(r.queued);
   };
   return (
     <Modal title={item.id ? 'Edit request' : 'Record a request'} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>Save</Button></>}>

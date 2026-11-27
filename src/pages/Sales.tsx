@@ -26,7 +26,7 @@ export default function Sales() {
     const { data: ps } = ids.length ? await supabase.from('profiles').select('id,full_name').in('id', ids) : { data: [] as any[] };
     const names = new Map((ps ?? []).map((p: any) => [p.id, p.full_name]));
     return (data ?? []).map((s: any) => ({ ...s, cashier: names.get(s.cashier_id) ?? '—' }));
-  }, []);
+  }, [], { cacheKey: 'sales.list' });
 
   const pending = useAsync(async () => {
     const { data, error } = await supabase.from('payments').select('*').eq('status', 'pending_verification').order('created_at', { ascending: false }).limit(200);
@@ -40,7 +40,7 @@ export default function Sales() {
     const sm = new Map((s.data ?? []).map((x: any) => [x.id, x.receipt_no]));
     const om = new Map((o.data ?? []).map((x: any) => [x.id, x.order_no]));
     return (data ?? []).map((p: any) => ({ ...p, ref_no: sm.get(p.sale_id) ?? om.get(p.order_id) ?? '—' }));
-  }, []);
+  }, [], { cacheKey: 'sales.pending' });
 
   const verify = async (id: string, accept: boolean) => {
     const { error } = await supabase.rpc('verify_payment', { p_payment: id, p_accept: accept });
@@ -111,7 +111,7 @@ function SaleDrawer({ sale, onClose, onChanged }: { sale: any; onClose: () => vo
       .select('id, sale_items(id,quantity,unit_price,line_total,batch_id,drug_id,drugs(name)), payments(id,method,amount,status,reference,note), sale_returns(id,return_no,reason,refund_method,refund_amount,created_at,sale_return_items(sale_item_id,quantity,restocked))').eq('id', sale.id).single();
     if (error) throw error;
     return data as any;
-  }, [sale.id]);
+  }, [sale.id], { cacheKey: `sales.detail.${sale.id}` });
   const doVoid = async () => {
     const { error } = await supabase.rpc('void_sale', { p_sale: sale.id, p_reason: reason });
     if (error) return toast(errMsg(error), 'error');

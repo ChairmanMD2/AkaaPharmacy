@@ -26,7 +26,7 @@ export default function Deliveries() {
     const { data, error } = await supabase.from('delivery_jobs').select(COLS).order('assigned_at', { ascending: false }).limit(200);
     if (error) throw error;
     return data as any[];
-  }, []);
+  }, [], { cacheKey: 'deliveries.list' });
 
   const update = async (job: any, status: string, note?: string) => {
     const { error } = await supabase.rpc('courier_update_job', { p_job: job.id, p_status: status, p_note: note ?? null });

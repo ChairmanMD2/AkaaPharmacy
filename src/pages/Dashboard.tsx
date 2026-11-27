@@ -21,7 +21,7 @@ export default function Dashboard() {
   const { profile } = useAuth();
   const drugs = useLiveQuery(() => db.drugs.toArray(), [], []);
   const batches = useLiveQuery(() => db.batches.toArray(), [], []);
-  const waiting = useLiveQuery(() => db.pending.where('status').anyOf('pending', 'syncing', 'error').count(), [], 0);
+  const waiting = useLiveQuery(() => db.pending_sales.where('status').anyOf('pending', 'syncing', 'error').count(), [], 0);
 
   const online = useAsync(async () => {
     const start = new Date(); start.setHours(0, 0, 0, 0);
@@ -35,7 +35,7 @@ export default function Dashboard() {
     if (sales.error) throw sales.error;
     const rows = sales.data ?? [];
     return { todayTotal: rows.reduce((s: number, r: any) => s + Number(r.total), 0), todayCount: rows.length, pendingPay, review, orders, wish };
-  }, []);
+  }, [], { cacheKey: 'dashboard.online' });
 
   const stock = useMemo(() => {
     const low: { name: string; have: number; level: number }[] = [];
